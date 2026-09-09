@@ -205,6 +205,7 @@ def test_ping_answers_endpoint_and_model(monkeypatch) -> None:
         raise llm.LLMError("not ollama")
 
     monkeypatch.setattr(llm, "http_json", fake)
+    monkeypatch.setenv("MISP_TAG_SUGGEST_URL", "http://suggest.example:8000")  # CI has no .env
     monkeypatch.setattr(suggest, "is_reachable", lambda s: True)
     answer = ai_connector.dict_handler(
         {"module": "ai_connector", "use_case": "ping", "params": MISP_PARAMS}

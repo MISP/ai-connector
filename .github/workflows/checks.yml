@@ -37,9 +37,10 @@ jobs:
         with:
           python-version: "3.14"
       - run: uv sync --extra dev --extra e2e
-      # offline layers only: unit tests and the local misp-modules server e2e.
-      # Live MISP / LLM layers need .env and the GPU host; they run locally (docs/TESTING.md).
-      - run: uv run pytest -q --deselect tests/test_llm_live.py --deselect tests/test_e2e_roundtrip.py
+      # Offline layers only: unit tests, the MISP contract gate and the local misp-modules
+      # server e2e. Every live layer (LLM, MISP, misp-tag-suggest) skips itself when CI is set
+      # (tests/conftest.py live_gate); they run from a developer machine (docs/TESTING.md).
+      - run: uv run pytest -q
 
   semgrep:
     runs-on: ubuntu-latest

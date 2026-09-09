@@ -1,6 +1,7 @@
 """Shared fixtures: local fixture events and read-only access to the live MISP instance."""
 
 import json
+import os
 import ssl
 import sys
 import urllib.request
@@ -73,8 +74,14 @@ def pytest_collection_modifyitems(items):
                 item.add_marker(getattr(pytest.mark, marker))
 
 
+CI_REASON = "live systems (LLM, MISP, misp-tag-suggest) are not reachable from a CI runner"
+
+
 def live_gate(config, gate: str, reason: str) -> None:
     """A live system is unavailable: skip by default, fail with --require-live."""
+    if os.environ.get("CI"):  # GitHub Actions sets CI=true: never probe, never fail there
+        config.live_gates[gate] = f"skipped: {CI_REASON}"
+        pytest.skip(f"{CI_REASON} ({gate})")
     if config.getoption("--require-live"):
         config.live_gates[gate] = f"FAILED: {reason}"
         pytest.fail(f"{gate}: {reason} ({LIVE_HELP})", pytrace=False)
@@ -105,6 +112,8 @@ def pytest_terminal_summary(terminalreporter, config):
 @pytest.fixture(scope="session")
 def llm_settings(request) -> llm.LLMSettings:
     """LLM endpoint from .env; skips (or fails with --require-live) when it is unreachable."""
+    if os.environ.get("CI"):
+        live_gate(request.config, "llm", CI_REASON)
     settings = llm.LLMSettings.from_env()
     if not settings.model or not llm.is_reachable(settings):
         live_gate(
@@ -119,6 +128,8 @@ def llm_settings(request) -> llm.LLMSettings:
 @pytest.fixture(scope="session")
 def suggest_settings(request) -> suggest.SuggestSettings:
     """misp-tag-suggest service from .env; skips (or fails with --require-live) when not ready."""
+    if os.environ.get("CI"):
+        live_gate(request.config, "suggest", CI_REASON)
     try:
         settings = suggest.SuggestSettings.from_env()
     except suggest.SuggestError as exc:
@@ -205,6 +216,8 @@ class MispApi:
 
 @pytest.fixture(scope="session")
 def misp_api(request) -> MispApi:
+    if os.environ.get("CI"):
+        live_gate(request.config, "misp", CI_REASON)
     env = load_env()
     base_url = env.get("MISP_BASE_URL") or (
         f"https://{env['MISP_HOST']}" if env.get("MISP_HOST") else ""

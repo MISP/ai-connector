@@ -26,7 +26,9 @@ E2E_SEED=42 MISP_VERIFY_SSL=false .venv/bin/pytest -q -s tests/test_e2e_roundtri
 ```
 
 Conventions: live tests **skip** (never fail) when `.env` is missing, the key is rejected, the
-host is unreachable or an event returns 404; `tests/conftest.py` holds the `.env` loader (last
+host is unreachable or an event returns 404, and always on a CI runner (`CI` set: GitHub
+Actions has no route to the LLM, MISP or the tag-suggest service, so the gates skip before
+probing — `--require-live` is a developer-machine flag); `tests/conftest.py` holds the `.env` loader (last
 line wins) and the read-only `MispApi` (`fetch`, `index`). The gate writes
 `tests/e2etests/<uuid>.json` and `last_run.json` (gitignored).
 

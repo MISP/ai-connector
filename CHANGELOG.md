@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-10 (CI fix)
+
+- Live layers never run on a CI runner: `tests/conftest.py` `live_gate()` and the three live fixtures (`llm_settings`, `misp_api`, `suggest_settings`) skip as soon as `CI` is set (GitHub Actions), before any network probe; the workflow no longer hand-picks files to deselect. TESTING.md conventions updated.
+- `tests/test_misp_contract_unit.py`: the `ping` test relied on `MISP_TAG_SUGGEST_URL` from the developer's `.env`; it now sets the variable itself, so the offline CI run (no `.env`) passes again ([run 34410492390](https://github.com/MISP/ai-connector/actions/runs/34410492390)).
+
 ## 2026-09-09 (the module is `ai_connector`: MISP's feature/ai_tools contract)
 
 - **Renamed to `ai_connector`** (`expansion/ai_connector.py`, `"module-type": ["ai"]`, version 0.5; `pyproject` name `ai-connector` 0.5.0; env prefix `AI_CONNECTOR_`; tests `test_ai_connector_*`). MISP's [`feature/ai_tools`](https://github.com/MISP/MISP/tree/feature/ai_tools) hard-wires that name in a new module family `ai` (`Module::AI_MODULE_NAME`). The prompt galaxy keeps its name `generic-ai-prompts` (a MISP galaxy identifier that lives on instances).
