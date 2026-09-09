@@ -97,5 +97,5 @@ so the module is called by script or API today. The researched plan for proper U
 
 - module name `generic_ai` · module type `expansion` · input: a full MISP Event · output: the
   processed MISP Event, a second MISP Event built from the report, and the report markdown
-- licensed under the [GNU AGPL v3](LICENSE); built at [CIRCL](https://www.circl.lu/) with
+- licensed under the [GNU AGPL v3](LICENSE); built for [CIRCL](https://www.circl.lu/) by
   [ctitools](https://github.com/ctitools)
