@@ -1,10 +1,12 @@
 """The single place that talks to the LLM (OpenAI-compatible chat completions).
 
-Endpoint, key and model come from the environment / the repo's .env only, never from a request.
+Endpoint, key and model come from the request's params (MISP's Plugin.AI_* settings) when
+given, else from the environment / the repo's .env (expansion/ai_connector.py resolves them).
 """
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -14,6 +16,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TIMEOUT = 120
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_PARAMS = {"temperature": 0, "seed": 42, "top_p": 1, "max_tokens": 600, "think": False}
 
 
@@ -49,10 +52,10 @@ class LLMSettings:
     def from_env(cls, model: str | None = None, timeout: int | None = None) -> "LLMSettings":
         values = env()
         return cls(
-            base_url=values.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+            base_url=values.get("OPENAI_BASE_URL", DEFAULT_BASE_URL).rstrip("/"),
             api_key=values.get("OPENAI_API_KEY", ""),
             model=model or values.get("OPENAI_MODEL", ""),
-            timeout=int(timeout or values.get("GENERIC_AI_REQUEST_TIMEOUT") or DEFAULT_TIMEOUT),
+            timeout=int(timeout or values.get("AI_CONNECTOR_REQUEST_TIMEOUT") or DEFAULT_TIMEOUT),
         )
 
 
@@ -135,6 +138,26 @@ def is_reachable(settings: LLMSettings) -> bool:
         return True
     except LLMError:
         return False
+
+
+def ping(settings: LLMSettings) -> dict[str, Any]:
+    """The "ping" use-case: is the endpoint up and does it list the model? No generation call.
+    Raises LLMError when the endpoint is unreachable or the model is not among those listed."""
+    if not settings.model:
+        raise LLMError("no model configured (params.model_id or OPENAI_MODEL)")
+    started = time.perf_counter()
+    listed = _request(f"{settings.base_url}/models", settings)
+    latency = round((time.perf_counter() - started) * 1000)
+    ids = [m.get("id") for m in listed.get("data", [])] if isinstance(listed, dict) else []
+    if ids and settings.model not in ids:
+        raise LLMError(f"model {settings.model!r} is not served by {settings.base_url} ({ids})")
+    return {
+        "ok": True,
+        "endpoint": settings.base_url,
+        "model": model_info(settings),
+        "latency_ms": latency,
+        "models_listed": len(ids),
+    }
 
 
 def model_info(settings: LLMSettings) -> dict[str, Any]:

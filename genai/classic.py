@@ -1,7 +1,7 @@
 """Classical regex IoC extractor (iocextract) — testing and benchmark baseline only.
 
 Returns a *superset* of indicators, refanging defanged values. It is never called on the
-module's request path (`expansion/generic_ai.py`, `genai/extract.py` do not import it);
+module's request path (`expansion/ai_connector.py`, `genai/extract.py` do not import it);
 `tests/test_classic_unit.py` enforces that.
 
 CLI: python -m genai.classic <textfile> [-o out.json]

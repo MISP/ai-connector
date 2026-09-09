@@ -1,11 +1,14 @@
-# Integration plan: how MISP users reach the generic AI MISP module
+# Integration plan: how MISP users reach the ai_connector module
 
-Status: **not started**, decided 2026-09-05. Research and recommendation; nothing here is
-implemented yet. The module itself (docs/USE-CASES.md) continues to evolve independently.
+Status: **superseded on 2026-09-09** by MISP's own integration
+([MISP `feature/ai_tools`](https://github.com/MISP/MISP/tree/feature/ai_tools), documented in
+its `docs/dev/ai_integration.md`): MISP now hard-wires one module, `ai_connector`, in a new
+module family `ai`, and this repository implements that contract (DEVELOPER_GUIDE.md §3). The
+research below is kept as the record of why per-attribute expansion modules did not fit. The module itself (docs/USE-CASES.md) continues to evolve independently.
 
 ## Context
 
-Today `expansion/generic_ai.py` is one module that takes a full MISP Event and a `use_case`
+Today `expansion/ai_connector.py` is one module that takes a full MISP Event and a `use_case`
 parameter (`extraction` | `summarization`, plus `summary_kind`). The question: how does a MISP
 user pick the function, and should the actions be separate modules or one parameterised one?
 Answer derived from the MISP 2.5 sources (app/Controller/EventsController.php,
@@ -86,25 +89,25 @@ adds a layer without removing any. The MISP-like shape is:
 ```
 genai/entry.py            one function: run(request: dict, use_case: str, **fixed) -> dict
                           (= today's dict_handler body: extract event, validate, dispatch, tag)
-expansion/generic_ai_summary_report.py   moduleinfo/mispattributes/moduleconfig + 5-line handler
-expansion/generic_ai_summary_event.py    that calls genai.entry.run(request, "summarization", kind=…)
-import_mod/generic_ai_extract.py
-action_mod/generic_ai.py
+expansion/ai_connector_summary_report.py   moduleinfo/mispattributes/moduleconfig + 5-line handler
+expansion/ai_connector_summary_event.py    that calls genai.entry.run(request, "summarization", kind=…)
+import_mod/ai_connector_extract.py
+action_mod/ai_connector.py
 ```
 
 Each wrapper is ~30 lines and differs only in its declarations and the fixed arguments it
-passes; shared behaviour lives in one function, tested once. `expansion/generic_ai.py` stays
+passes; shared behaviour lives in one function, tested once. `expansion/ai_connector.py` stays
 as the parameterised entry for scripts, tests and the benchmark.
 
 | user wants | entry point in MISP | our component | how the user picks it |
 |---|---|---|---|
 | summary of a report as new EventReport | event-report page "Send to LLM" button, or workflow `event-report-after-save` | `genai/adapter.py`: a small HTTP service speaking the contract MISP's `sendToLLM` expects | one instance setting (`Plugin.CTIInfoExtractor_url` in MISP's naming); the button exists already |
-| indicators from a report, reviewed before saving | Event → Populate from… → import module | `import_mod/generic_ai_extract.py` (`inputSource: ["paste", "file"]`, `userConfig`: `min_confidence`, `prompt`) | picks the module and fills the small form |
-| summary of the whole event / extraction on an existing report, automated | workflow action on `event-publish` / `event-report-after-save` | `action_mod/generic_ai.py` (`expect_misp_core_format: true`, `params`: `action` select = summary-report \| summary-event \| extraction, `misp_url`, `misp_key`) writes the result back with PyMISP | picks the action in the node's dropdown |
-| taxonomy tags for an event, automated | workflow action on `event-after-save` / `event-publish` | `action_mod/generic_ai.py` with `action=tag_suggestion` (UC3, `genai/suggest.py` → misp-tag-suggest service) | same node dropdown |
-| scripted / API use, tests, benchmark | misp-modules server `POST /query` | `expansion/generic_ai.py` as today (module-type stays `["expansion"]`, no hover) | body parameters as today |
+| indicators from a report, reviewed before saving | Event → Populate from… → import module | `import_mod/ai_connector_extract.py` (`inputSource: ["paste", "file"]`, `userConfig`: `min_confidence`, `prompt`) | picks the module and fills the small form |
+| summary of the whole event / extraction on an existing report, automated | workflow action on `event-publish` / `event-report-after-save` | `action_mod/ai_connector.py` (`expect_misp_core_format: true`, `params`: `action` select = summary-report \| summary-event \| extraction, `misp_url`, `misp_key`) writes the result back with PyMISP | picks the action in the node's dropdown |
+| taxonomy tags for an event, automated | workflow action on `event-after-save` / `event-publish` | `action_mod/ai_connector.py` with `action=tag_suggestion` (UC3, `genai/suggest.py` → misp-tag-suggest service) | same node dropdown |
+| scripted / API use, tests, benchmark | misp-modules server `POST /query` | `expansion/ai_connector.py` as today (module-type stays `["expansion"]`, no hover) | body parameters as today |
 
-Why not one module with a setting: `Plugin.Enrichment_generic_ai_use_case` would make the
+Why not one module with a setting: `Plugin.AI_use_case` would make the
 whole instance do one thing, and the UI would still never show it (finding 2).
 Why not many full modules: duplicated validation, tagging and tests; the wrappers share
 `genai.entry.run`, so every quality gate we have keeps covering all entry points.
@@ -112,14 +115,14 @@ Why not many full modules: duplicated validation, tagging and tests; the wrapper
 ## Steps (ordered by value; each is independently shippable)
 
 1. **Extract the shared entry** — `genai/entry.py::run(request, use_case, **fixed)` from
-   today's `dict_handler` (behaviour-preserving refactor; `expansion/generic_ai.py` calls it;
-   existing tests are the gate). README gains a section **"Does the generic AI MISP module
+   today's `dict_handler` (behaviour-preserving refactor; `expansion/ai_connector.py` calls it;
+   existing tests are the gate). README gains a section **"Does the ai_connector module
    work? Test it with curl"**: start the misp-modules server, `curl` `/modules` to see it
-   listed, then `curl -X POST http://127.0.0.1:6666/query -d '{"module":"generic_ai","event":
+   listed, then `curl -X POST http://127.0.0.1:6666/query -d '{"module":"ai_connector","event":
    {...fixture...},"use_case":"summarization"}'` with the expected shape of the answer, and the
    same for extraction; note that MISP's `/modules/queryEnrichment` proxy is not usable (hover).
 2. **Adapter for report summaries** — `genai/adapter.py`: stdlib `http.server` exposing
-   `POST /` that takes `{"text"}`, checks `x-api-key` against `.env` `GENERIC_AI_ADAPTER_KEY`,
+   `POST /` that takes `{"text"}`, checks `x-api-key` against `.env` `AI_CONNECTOR_ADAPTER_KEY`,
    runs `summarize(kind="report")` on a synthetic event through `genai.entry.run`, and returns
    `{"AI_ExecutiveSummary": <summary>, "AI_ThreatActor": "", "AI_AttributedCountry": "",
    "AI_Motivation": "", "AI_Type": "", "AI_CouldWeBeAffected": null}` — the threat-actor
@@ -132,13 +135,13 @@ Why not many full modules: duplicated validation, tagging and tests; the wrapper
    `docs/upstream/README.md` (what, why, the two tag strings from the pinned list, optional
    fifth `sendToLLM` option `store_as_new_report` defaulting to false for backwards
    compatibility). Nothing is pushed or opened; Aaron reviews, then decides.
-4. **Import module for reviewed extraction** — `import_mod/generic_ai_extract.py` (first
+4. **Import module for reviewed extraction** — `import_mod/ai_connector_extract.py` (first
    verify that `misp-modules -c <dir>` loads custom `import_mod/` modules; if it does not,
    document and skip). `userConfig`: `min_confidence` (Integer 0-100), `prompt` (String,
    cluster value). Handler: pasted/uploaded text → synthetic event with one EventReport →
    `genai.entry.run(request, "extraction")` → `{"results": <MISPEvent json>}`. Reuses MISP's
    review screen; the AI tags travel with the attributes.
-5. **Workflow action module** — `action_mod/generic_ai.py`: `params` `action` (select),
+5. **Workflow action module** — `action_mod/ai_connector.py`: `params` `action` (select),
    `misp_url`, `misp_key`, `verify_ssl`; `expect_misp_core_format: true`; runs the chosen
    use-case on `request["data"]` and pushes the result with PyMISP (`add_attribute`,
    `add_event_report`, `tag`), `returns = "data"` with the metadata. e2e test against the dev
@@ -146,7 +149,7 @@ Why not many full modules: duplicated validation, tagging and tests; the wrapper
    verify the new report/attributes and the AI tags (the AGENTS.md E2E loop).
 6. **Docs**: USE-CASES.md "How to call it from MISP" with the table above; ARCHITECTURE.md
    gets the findings (short); requirements.md R1 gains the entry points; CHANGELOG. The
-   component is called "generic AI MISP module" everywhere; MISP's own setting names are quoted
+   component is called "ai_connector module" everywhere; MISP's own setting names are quoted
    only where the user has to type them.
 
 Not planned: patching MISP's UI to offer whole-event expansion (dead `Event` branch in
@@ -162,6 +165,6 @@ Not planned: patching MISP's UI to offer whole-event expansion (dead `Event` bra
   scratchpad); Aaron reviews the text.
 - Step 4: misp-modules server lists the import module (`/modules`), MISP "Populate from…"
   shows it, a pasted report yields the review screen with AI-tagged attributes.
-- Step 5: workflow with trigger `event-report-after-save` → node `generic_ai`
+- Step 5: workflow with trigger `event-report-after-save` → node `ai_connector`
   action=summary-report → new EventReport "AI summary of …" and both AI tags on the event;
-  asserted via PyMISP in `tests/test_generic_ai_e2e.py`.
+  asserted via PyMISP in `tests/test_ai_connector_e2e.py`.

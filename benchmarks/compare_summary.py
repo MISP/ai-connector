@@ -106,7 +106,7 @@ def per_report(row: dict) -> list:
 def report(  # one table per metric family; pylint: disable=too-many-locals
     rows: list[dict], prompt: prompts.Prompt, kind: str = "report"
 ) -> str:
-    run = "GENERIC_AI_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm --use-case summarization"
+    run = "AI_CONNECTOR_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm --use-case summarization"
     ok = [r for r in rows if "summary" in r["result"]]
     errors = Counter(
         k for r in rows if "error" in r["result"] for k in gate_problems(r["result"]["error"])

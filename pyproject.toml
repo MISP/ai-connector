@@ -3,9 +3,9 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "generic-ai-misp-module"
-version = "0.3.0"
-description = "Custom MISP expansion module: full MISP Event in, processed MISP Event out"
+name = "ai-connector"
+version = "0.5.0"
+description = "The MISP AI module (ai_connector): summaries, tag suggestions and CTI extraction for a MISP Event"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = ["pymisp>=2.5.34.2", "iocextract>=1.16.1"]
@@ -27,6 +27,9 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_e2e_misp_ai_actions.py" = ["F811"]  # fixtures imported from test_e2e_misp_write
 
 [tool.pylint.main]
 py-version = "3.14"

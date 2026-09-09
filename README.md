@@ -1,24 +1,27 @@
-# Generic AI MISP module
+# ai_connector
 
-A custom [misp-modules](https://github.com/MISP/misp-modules) expansion module that puts a Large
-Language Model to work on a **full MISP Event** ([MISP core
+The MISP AI module: the [misp-modules](https://github.com/MISP/misp-modules) module of type
+`ai` that MISP's *AI actions* ([MISP `feature/ai_tools`](https://github.com/MISP/MISP/tree/feature/ai_tools))
+call to put a Large Language Model to work on a **full MISP Event** ([MISP core
 format](https://www.misp-standard.org/rfc/misp-standard-core.html)) — not on a single attribute.
 
-You give it a whole MISP Event, it validates it with [PyMISP](https://github.com/MISP/PyMISP),
-takes the markdown of the event's `EventReport`s (the CTI report an analyst pasted in) and runs
-the configured use-case on it. What comes back is again a MISP Event, ready to be pushed into
-MISP.
+MISP posts a whole event (or one event report) with the LLM settings from its *AI* tab, the
+module validates it with [PyMISP](https://github.com/MISP/PyMISP), takes the markdown of the
+`EventReport`s (the CTI report an analyst pasted in) and runs the requested use-case. What
+comes back is exactly what MISP writes: a new report, a revised report, or tag names.
 
 | use-case | what you get |
 |---|---|
-| **CTI info extraction** | high-confidence MISP attributes read out of the report — IPs, domains, hashes, CVEs, plus `file` / `vulnerability` objects — each one refanged, deduplicated against the event, and carrying the quote it came from |
-| **Summarization** | a new `EventReport` with an executive summary, either of one report or of the whole event |
-| **Tag suggestion** | taxonomy and galaxy tags voted from the most similar events already in your MISP (no LLM) |
-| **none** (default) | pass-through, no model call at all |
+| **Summarise the event** (`summarization_on_event`) | a new `EventReport` with an executive summary of the whole event |
+| **Summarise a report** (`summarization_on_eventReport`) | the report with a `# AI summary` block on top of the analyst's text |
+| **Recommend tags** (`tag_suggest`) | taxonomy and galaxy tags voted from the most similar events already in your MISP (no LLM) |
+| **CTI info extraction** (`infoextraction`) | high-confidence MISP attributes read out of the report — IPs, domains, hashes, CVEs, plus `file` / `vulnerability` objects — each one refanged, deduplicated against the event, and carrying the quote it came from (no MISP button yet) |
+| **Ping** (`ping`) | is the endpoint up and does it serve the configured model |
 
 Three properties matter more than the feature list:
 
-- **MISP Event in → MISP Event out.** No side format, no bespoke JSON contract to integrate.
+- **MISP's own contract.** One request shape (`use_case`, `data`, `params`), one answer shape;
+  the settings come from MISP's *AI* tab with every request.
 - **Everything the model produced is tagged**, verbatim, with
   `ai-computer-assisted:assistance-level="ai-generated"` and
   `ai-computer-assisted:review-level="unreviewed"`. Nothing machine-made can quietly pass as
@@ -78,9 +81,9 @@ uv pip install --python .venv/bin/python -e ".[dev,e2e]"
 In a second terminal — a summary of the shipped test event, with the AI tags it carries:
 
 ```bash
-jq -c '{module: "generic_ai", use_case: "summarization", summary_kind: "report", event: .}' fixtures/summary/dummy-event.json \
+jq -c '{module: "ai_connector", use_case: "summarization_on_event", data: ., params: {}}' fixtures/summary/dummy-event.json \
   | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
-  | jq '{summary: .results.Event.Event.EventReport[-1].content, tags: [.results.Event.Event.Tag[].name], meta: .metadata}'
+  | jq '{summary: .results.EventReport.content, tags: [.results.Tag[].name], meta: .metadata}'
 ```
 
 ## Status
@@ -91,11 +94,12 @@ current numbers in [docs/BENCHMARKS.md](docs/BENCHMARKS.md), the full picture of
 partial and planned in
 [docs/DEVELOPER_GUIDE.md §10](docs/DEVELOPER_GUIDE.md#10-where-the-project-stands).
 
-Not there yet: MISP's web interface has no path that sends a whole event to an expansion module,
-so the module is called by script or API today. The researched plan for proper UI integration is
-[docs/INTEGRATION_PLAN.md](docs/INTEGRATION_PLAN.md).
+Not there yet: MISP's buttons live on its `feature/ai_tools` branch only; that branch has no
+button for extraction and does not attach the `ai-computer-assisted` tags the module returns
+for summaries (issue texts for the MISP project in `docs/misp-issues/`).
 
-- module name `generic_ai` · module type `expansion` · input: a full MISP Event · output: the
-  processed MISP Event, a second MISP Event built from the report, and the report markdown
+- module name `ai_connector` · module type `ai` · input: `use_case` + `data` (a MISP Event, or
+  one EventReport with its event) + `params` · output: `results.EventReport`, `results.Tag`,
+  `results.Attribute` / `results.Object`
 - licensed under the [GNU AGPL v3](LICENSE); built for [CIRCL](https://www.circl.lu/) by
   [ctitools](https://github.com/ctitools)

@@ -8,7 +8,7 @@ import pytest
 from conftest import load_fixture
 from pymisp import MISPEvent
 
-from expansion import generic_ai
+from expansion import ai_connector
 from genai import extract, llm, prompts, summarize
 
 AI_TAGS = set(prompts.AI_TAGS)
@@ -21,7 +21,7 @@ def _tags(element) -> set[str]:
 
 @pytest.fixture
 def event(dummy_event) -> MISPEvent:
-    return generic_ai.validate_event(dummy_event["Event"])
+    return ai_connector.validate_event(dummy_event["Event"])
 
 
 @pytest.fixture
@@ -71,14 +71,14 @@ def test_extraction_adds_tagged_attributes(event, fake_llm) -> None:
     )
     calls = fake_llm(answer)
     before = len(event.attributes)
-    settings = {"use_case": "extraction"}
+    settings = {"use_case": "infoextraction"}
     metadata: dict = {}
-    generic_ai.process_event(event, settings=settings, metadata=metadata)
+    ai_connector.process_event(event, settings=settings, metadata=metadata)
     assert calls[0]["json_mode"] is True
     assert "{{" not in calls[0]["messages"][0]["content"]  # placeholders rendered
     added = [a for a in event.attributes if a.value == "acme-bank-secure.example"]
     assert len(added) == 1 and _tags(added[0]) == AI_TAGS
-    assert added[0].comment == f"extracted by generic_ai from EventReport {REPORT_UUID}"
+    assert added[0].comment == f"extracted by ai_connector from EventReport {REPORT_UUID}"
     assert len(event.attributes) == before + 1  # the filename already exists inside the file object
     assert metadata["added"] == 1 and [r["reason"] for r in metadata["rejected"]] == ["duplicate"]
     assert not _tags(event) & AI_TAGS  # attributes were suggested, not event-level content
@@ -100,7 +100,7 @@ def test_extraction_adds_tagged_attributes(event, fake_llm) -> None:
 def test_extraction_filters(event, fake_llm, candidate, reason) -> None:
     fake_llm(json.dumps({"indicators": [candidate]}))
     metadata: dict = {}
-    generic_ai.process_event(event, settings={"use_case": "extraction"}, metadata=metadata)
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"}, metadata=metadata)
     assert metadata["added"] == 0
     assert metadata["rejected"][0]["reason"] == reason
 
@@ -113,7 +113,7 @@ DEFANGED_REPORT = (
 
 
 def _defanged_event() -> MISPEvent:
-    return generic_ai.validate_event(
+    return ai_connector.validate_event(
         {"info": "defanged", "EventReport": [{"name": "r", "content": DEFANGED_REPORT}]}
     )
 
@@ -135,7 +135,7 @@ def test_extraction_refangs_and_records_the_original(fake_llm) -> None:
     )
     event = _defanged_event()
     metadata: dict = {}
-    generic_ai.process_event(event, settings={"use_case": "extraction"}, metadata=metadata)
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"}, metadata=metadata)
     stored = {a.type: (a.value, a.comment) for a in event.attributes}
     assert stored["ip-dst"][0] == "198.51.100.7"
     assert stored["ip-dst"][1].endswith("; defanged in source as 198.51.100[.]7")
@@ -155,7 +155,7 @@ def test_extraction_retypes_hashes_by_length(fake_llm) -> None:
     fake_llm(json.dumps({"indicators": [_candidate("md5", digest)]}))
     event = _defanged_event()
     metadata: dict = {}
-    generic_ai.process_event(event, settings={"use_case": "extraction"}, metadata=metadata)
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"}, metadata=metadata)
     (attribute,) = event.attributes
     assert attribute.type == "sha1" and attribute.comment.endswith("; typed md5 by the model")
     assert metadata["retyped"] == 1 and metadata["added"] == 1
@@ -165,7 +165,7 @@ def test_extraction_rejects_non_json(event, fake_llm) -> None:
     fake_llm("Here are the indicators: 203.0.113.42")
     before = event.to_json()
     with pytest.raises(llm.LLMError, match="not JSON"):
-        generic_ai.process_event(event, settings={"use_case": "extraction"})
+        ai_connector.process_event(event, settings={"use_case": "infoextraction"})
     assert event.to_json() == before
 
 
@@ -181,7 +181,7 @@ def test_extraction_builds_objects(fake_llm) -> None:
             ],
         }
     }
-    event = generic_ai.validate_event(raw["Event"])
+    event = ai_connector.validate_event(raw["Event"])
     quote = "evil.exe (sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)"
     fake_llm(
         json.dumps(
@@ -195,7 +195,7 @@ def test_extraction_builds_objects(fake_llm) -> None:
         )
     )
     metadata: dict = {}
-    generic_ai.process_event(event, settings={"use_case": "extraction"}, metadata=metadata)
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"}, metadata=metadata)
     assert metadata == {**metadata, "added": 3, "objects": 2}
     assert sorted(o.name for o in event.objects) == ["file", "vulnerability"]
     for misp_object in event.objects:
@@ -204,10 +204,10 @@ def test_extraction_builds_objects(fake_llm) -> None:
 
 
 def test_extraction_needs_a_report(fake_llm) -> None:
-    event = generic_ai.validate_event({"info": "no report"})
+    event = ai_connector.validate_event({"info": "no report"})
     fake_llm("{}")
     with pytest.raises(ValueError, match="no EventReport"):
-        generic_ai.process_event(event, settings={"use_case": "extraction"})
+        ai_connector.process_event(event, settings={"use_case": "infoextraction"})
 
 
 def test_extraction_only_adds(event, fake_llm, dummy_event) -> None:
@@ -224,7 +224,7 @@ def test_extraction_only_adds(event, fake_llm, dummy_event) -> None:
             }
         )
     )
-    generic_ai.process_event(event, settings={"use_case": "extraction"})
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"})
     differences = misp_event_diff(dummy_event["Event"], json.loads(event.to_json()))
     assert all("added by processing" in d or "items ->" in d for d in differences), differences
 
@@ -245,7 +245,9 @@ EVENT_SUMMARY = (
 def test_summary_of_report_is_attached_and_event_tagged(event, fake_llm) -> None:
     calls = fake_llm(SUMMARY)
     metadata: dict = {}
-    generic_ai.process_event(event, settings={"use_case": "summarization"}, metadata=metadata)
+    ai_connector.process_event(
+        event, settings={"use_case": "summarization_on_eventReport"}, metadata=metadata
+    )
     assert "## Summary" in calls[0]["messages"][0]["content"]  # the report was the input
     assert calls[0]["params"]["temperature"] == 0 and calls[0]["params"]["seed"] == 42
     assert [r.name for r in event.event_reports][
@@ -257,13 +259,14 @@ def test_summary_of_report_is_attached_and_event_tagged(event, fake_llm) -> None
     assert all(not _tags(a) & AI_TAGS for a in event.attributes)
     assert (
         metadata["kind"] == "report"
+        and metadata["use_case"] == "summarization_on_eventReport"
         and metadata["prompt"]["cluster"] == "summary-report/qwen3.8-v2"
     )
 
 
 def test_summary_of_event_uses_rendering(event, fake_llm) -> None:
     calls = fake_llm(EVENT_SUMMARY)
-    generic_ai.process_event(event, settings={"use_case": "summarization", "summary_kind": "event"})
+    ai_connector.process_event(event, settings={"use_case": "summarization_on_event"})
     sent = calls[0]["messages"][0]["content"]
     assert "## Attributes" in sent and "1b2c3d4e-5f60-4718-8293-a4b5c6d7e8f9" in sent
     assert "## Summary" not in sent  # report content is not the input for kind=event
@@ -271,10 +274,10 @@ def test_summary_of_event_uses_rendering(event, fake_llm) -> None:
 
 
 def test_event_rendering_is_deterministic_and_sorted(dummy_event) -> None:
-    first = summarize.render_event(generic_ai.validate_event(dummy_event["Event"]))
+    first = summarize.render_event(ai_connector.validate_event(dummy_event["Event"]))
     dummy_event["Event"]["Attribute"].reverse()
     dummy_event["Event"]["Tag"].reverse()
-    second = summarize.render_event(generic_ai.validate_event(dummy_event["Event"]))
+    second = summarize.render_event(ai_connector.validate_event(dummy_event["Event"]))
     assert first == second
     assert "timestamp" not in first
     for attribute in dummy_event["Event"]["Attribute"]:
@@ -301,47 +304,53 @@ def test_event_rendering_is_deterministic_and_sorted(dummy_event) -> None:
 def test_summary_structural_gate(event, fake_llm, answer, fragment) -> None:
     fake_llm(answer)
     with pytest.raises(llm.LLMError, match="structural check") as excinfo:
-        generic_ai.process_event(event, settings={"use_case": "summarization"})
+        ai_connector.process_event(event, settings={"use_case": "summarization_on_eventReport"})
     assert fragment in str(excinfo.value)
     assert len(event.event_reports) == 1 and not _tags(event) & AI_TAGS
 
 
-def test_unknown_kind_and_use_case(event, fake_llm) -> None:
+def test_unknown_use_case(event, fake_llm) -> None:
     fake_llm(SUMMARY)
-    with pytest.raises(ValueError, match="summary_kind"):
-        generic_ai.process_event(
-            event, settings={"use_case": "summarization", "summary_kind": "nope"}
-        )
     with pytest.raises(ValueError, match="use_case"):
-        generic_ai.process_event(event, settings={"use_case": "translate"})
+        ai_connector.process_event(event, settings={"use_case": "translate"})
+    with pytest.raises(ValueError, match="use_case"):
+        ai_connector.process_event(event, settings={"use_case": "ping"})  # needs no event
 
 
 # --- cross-cutting -------------------------------------------------------------------------------
 
 
-def test_settings_precedence(monkeypatch) -> None:
-    monkeypatch.setenv("GENERIC_AI_SUMMARY_KIND", "event")
-    monkeypatch.setenv("GENERIC_AI_REQUEST_TIMEOUT", "7")
-    settings = generic_ai.resolve_settings(
-        {
-            "use_case": "extraction",
-            "config": {"use_case": "summarization", "min_confidence": "0.5"},
-            "request_timeout": 1,
-        }
-    )
-    assert settings["use_case"] == "extraction"  # request beats config
-    assert settings["min_confidence"] == 0.5  # config beats default, coerced to float
-    assert settings["summary_kind"] == "event"  # env beats default
-    assert settings["request_timeout"] == 7  # request may not set it
-    assert generic_ai.resolve_settings({})["use_case"] == "none"
+def test_settings_precedence_params_over_env_over_default(monkeypatch) -> None:
+    monkeypatch.setenv("AI_CONNECTOR_MIN_CONFIDENCE", "0.5")
+    monkeypatch.setenv("AI_CONNECTOR_REQUEST_TIMEOUT", "7")
+    monkeypatch.setenv("OPENAI_MODEL", "env-model")
+    settings = ai_connector.resolve_settings({"request_timeout": "1", "suggest_limit": 3})
+    assert settings["request_timeout"] == 1  # params beat env, coerced to int
+    assert settings["min_confidence"] == 0.5  # env beats default, coerced to float
+    assert settings["suggest_limit"] == 3 and settings["model_id"] == "env-model"
+    assert settings["temperature"] is None and settings["sampling"] == {}
+    assert ai_connector.resolve_settings({"temperature": "0.2", "think": "false"})["sampling"] == {
+        "temperature": 0.2,
+        "think": False,
+    }
+    with pytest.raises(ValueError, match="unknown params"):
+        ai_connector.resolve_settings({"summary_kind": "event"})
+    with pytest.raises(ValueError, match="params.top_p must be a float"):
+        ai_connector.resolve_settings({"top_p": "high"})
 
 
-def test_request_cannot_set_endpoint(monkeypatch) -> None:
+def test_params_override_the_endpoint_from_env(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://from-env.example/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
-    settings = llm.LLMSettings.from_env()
-    assert settings.base_url == "http://from-env.example/v1" and settings.api_key == "env-key"
-    assert "api_base" not in generic_ai.moduleconfig and "api_key" not in generic_ai.moduleconfig
+    from_env = ai_connector.resolve_settings({})
+    assert from_env["openai_api_base"] == "http://from-env.example/v1"
+    assert from_env["api_key"] == "env-key"
+    overridden = ai_connector.resolve_settings(
+        {"openai_api_base": "http://misp-setting.example/v1/", "api_key": "misp-key"}
+    )
+    llm_settings = ai_connector._llm_settings(overridden)  # pylint: disable=protected-access
+    assert llm_settings.base_url == "http://misp-setting.example/v1"
+    assert llm_settings.api_key == "misp-key" and "misp-key" not in repr(llm_settings)
 
 
 def test_dict_handler_reports_llm_errors(dummy_event, monkeypatch) -> None:
@@ -349,14 +358,15 @@ def test_dict_handler_reports_llm_errors(dummy_event, monkeypatch) -> None:
         raise llm.LLMError("LLM endpoint unreachable or timed out (120s)")
 
     monkeypatch.setattr(llm, "llm_chat", boom)
-    result = generic_ai.dict_handler({"event": dummy_event, "use_case": "summarization"})
+    result = ai_connector.dict_handler({"use_case": "summarization_on_event", "data": dummy_event})
     assert result == {"error": "LLM endpoint unreachable or timed out (120s)"}
 
 
-def test_passthrough_default_makes_no_llm_call(dummy_event, monkeypatch) -> None:
+def test_process_event_default_is_a_pass_through(dummy_event, monkeypatch) -> None:
     monkeypatch.setattr(llm, "llm_chat", lambda *a, **k: pytest.fail("LLM called"))
-    result = generic_ai.dict_handler({"event": dummy_event})
-    assert result["metadata"] == {}
+    event = ai_connector.validate_event(dummy_event["Event"])
+    metadata: dict = {}
+    assert ai_connector.process_event(event, metadata=metadata) is event and not metadata
 
 
 def test_prompt_resolution() -> None:
@@ -380,8 +390,8 @@ def test_describe_types_matches_rfc_scale() -> None:
 def test_fixture_event_extraction_keeps_round_trip(fake_llm) -> None:
     raw = load_fixture("10a94632-a0a1-4062-a3a5-95fe321ae045")
     fake_llm(json.dumps({"indicators": []}))
-    event = generic_ai.validate_event(raw["Event"])
-    generic_ai.process_event(event, settings={"use_case": "extraction"})
+    event = ai_connector.validate_event(raw["Event"])
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"})
     assert json.loads(event.to_json())["uuid"] == raw["Event"]["uuid"]
 
 
@@ -434,7 +444,7 @@ DATED_REPORT = (
 
 
 def _dated_event() -> MISPEvent:
-    return generic_ai.validate_event(
+    return ai_connector.validate_event(
         {"info": "dated", "EventReport": [{"name": "r", "content": DATED_REPORT}]}
     )
 
@@ -456,7 +466,7 @@ def test_extraction_dates_from_the_text_only(fake_llm) -> None:
     )
     event = _dated_event()
     metadata: dict = {}
-    generic_ai.process_event(event, settings={"use_case": "extraction"}, metadata=metadata)
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"}, metadata=metadata)
     by_value = {a.value: a for a in event.attributes}
     beacon = by_value["198.51.100.7"]
     assert beacon.first_seen.isoformat() == "2026-03-12T00:00:00+00:00"
@@ -485,7 +495,7 @@ def test_extraction_to_ids_is_only_ever_lowered(fake_llm) -> None:
     )
     event = _dated_event()
     metadata: dict = {}
-    generic_ai.process_event(event, settings={"use_case": "extraction"}, metadata=metadata)
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"}, metadata=metadata)
     flags = {(a.type, a.value): a.to_ids for a in event.attributes}
     assert flags[("ip-dst", "198.51.100.7")] is True
     assert flags[("url", "https://vendor.example/post")] is False

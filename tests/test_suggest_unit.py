@@ -5,7 +5,7 @@
 import pytest
 from pymisp import MISPEvent
 
-from expansion import generic_ai
+from expansion import ai_connector
 from genai import llm, prompts, suggest
 
 AI_TAGS = set(prompts.AI_TAGS)
@@ -33,7 +33,7 @@ def _tags(event: MISPEvent) -> set[str]:
 
 @pytest.fixture
 def event(dummy_event) -> MISPEvent:
-    return generic_ai.validate_event(dummy_event["Event"])
+    return ai_connector.validate_event(dummy_event["Event"])
 
 
 @pytest.fixture
@@ -64,7 +64,7 @@ def fake_http(monkeypatch):
 def test_settings_come_from_env_only(settings) -> None:
     assert settings.base_url == "http://suggest.example:8000"  # trailing slash stripped
     assert settings.api_key == "s3cret" and "s3cret" not in repr(settings)
-    assert "suggest_url" not in generic_ai.moduleconfig
+    assert "suggest_url" not in ai_connector.PARAMS  # not settable from a request
 
 
 def test_missing_url_is_a_clear_error(monkeypatch) -> None:
@@ -136,24 +136,24 @@ def test_is_reachable(settings, fake_http) -> None:
 def test_dict_handler_dispatches_tag_suggestion(dummy_event, settings, fake_http, monkeypatch):
     fake_http(ANSWER)
     monkeypatch.setattr(llm, "llm_chat", lambda *a, **k: pytest.fail("LLM called"))
-    result = generic_ai.dict_handler(
-        {"event": dummy_event, "use_case": "tag_suggestion", "suggest_min_score": "0.5"}
+    result = ai_connector.dict_handler(
+        {"use_case": "tag_suggest", "data": dummy_event, "params": {"suggest_min_score": "0.5"}}
     )
     assert "error" not in result, result
-    tags = {t["name"] for t in result["results"]["Event"]["Event"]["Tag"]}
+    tags = {t["name"] for t in result["results"]["Tag"]}
     assert 'rsit:fraud="phishing"' in tags and AI_TAGS <= tags
-    assert result["metadata"]["use_case"] == "tag_suggestion"
+    assert result["metadata"]["use_case"] == "tag_suggest"
     assert result["metadata"]["model"]["name"] == ANSWER["model_version"]
     assert result["metadata"]["below_min_score"] == ['misp-galaxy:threat-actor="APT-X"']
 
 
 def test_dict_handler_reports_suggest_errors(dummy_event, settings, fake_http) -> None:
     fake_http(None, error="endpoint unreachable")
-    result = generic_ai.dict_handler({"event": dummy_event, "use_case": "tag_suggestion"})
+    result = ai_connector.dict_handler({"use_case": "tag_suggest", "data": dummy_event})
     assert result == {"error": "misp-tag-suggest: endpoint unreachable"}
 
 
 def test_use_case_is_known(dummy_event) -> None:
-    assert "tag_suggestion" in generic_ai.USE_CASES
-    assert generic_ai.resolve_settings({})["suggest_limit"] == 5
-    assert generic_ai.resolve_settings({"suggest_limit": "7"})["suggest_limit"] == 7
+    assert "tag_suggest" in ai_connector.USE_CASES
+    assert ai_connector.resolve_settings({})["suggest_limit"] == 5
+    assert ai_connector.resolve_settings({"suggest_limit": "7"})["suggest_limit"] == 7

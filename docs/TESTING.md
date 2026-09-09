@@ -10,9 +10,11 @@ API key).
 
 | layer | file | needs | what it proves |
 |---|---|---|---|
-| unit | `tests/test_generic_ai_unit.py`, `tests/test_misp_compare.py` | nothing | handler contract, input shapes, report extraction, 8 rejection cases, comparator rules |
-| local e2e | `tests/test_generic_ai_e2e.py` (first half) | `misp-modules` installed | the real server lists the module and round-trips every fixture through `/query` |
-| live e2e | `tests/test_generic_ai_e2e.py` (second half) | `.env` + MISP instance | the fixture uuids fetched live still validate and yield the same report |
+| unit | `tests/test_ai_connector_unit.py`, `tests/test_misp_compare.py` | nothing | handler contract, input shapes, report extraction, rejection cases, comparator rules |
+| **MISP contract gate** | `tests/test_misp_contract_unit.py` | nothing | the envelopes MISP's `Module::queryAI()` builds, replayed with a faked LLM / service; the answers checked the way `Event.php` / `EventReport.php` read them (summary block regex ported verbatim), `params` overriding `.env`, AI tags in `results.Tag`, `ping`, refusals |
+| local e2e | `tests/test_ai_connector_e2e.py` (first half) | `misp-modules` installed | the real server lists `ai_connector` as module-type `ai`, validates every fixture through `/query`, refuses unknown `params` by name |
+| **live AI-actions gate** | `tests/test_e2e_misp_ai_actions.py` | `.env` + a MISP on `feature/ai_tools` pointing at a running module | MISP's own *summarise event*, *summarise report* (twice: the block is replaced, not stacked) and *recommend tags* land on the instance; the AI tags are `xfail` until MISP attaches them |
+| live e2e | `tests/test_ai_connector_e2e.py` (second half) | `.env` + MISP instance | the fixture uuids fetched live still validate and yield the same report |
 | live suggest | `tests/test_suggest_live.py` | `.env` + misp-tag-suggest service | suggested tags exist on the dev MISP, the event is AI-tagged, abstention leaves it unchanged |
 | **round-trip gate** | `tests/test_e2e_roundtrip.py` | `.env` + MISP instance | 10 random live events survive `validate_event` → `process_event(e2etest=True)` semantically unchanged |
 
@@ -54,7 +56,7 @@ the answer alone; a test asserts the answer is not truncated (`finish_reason == 
 Gate = must be green before merge. Offline tests mock the LLM with a canned reply
 (`monkeypatch` on `genai.llm.llm_chat`, the single LLM-call function), so they run everywhere.
 Files: `tests/test_usecases_unit.py` (offline), `tests/test_llm_live.py` (live LLM),
-`tests/test_generic_ai_e2e.py` (through misp-modules, live LLM for the use-case cases).
+`tests/test_ai_connector_e2e.py` (through misp-modules, live LLM for the use-case cases).
 
 ```bash
 .venv/bin/pytest -q tests/test_usecases_unit.py                 # offline, ~2 s

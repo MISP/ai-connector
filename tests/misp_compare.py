@@ -25,7 +25,7 @@ _DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
 ALLOWLIST = {
     r"/GalaxyCluster\[\d+\]/(distribution|sharing_group_id)$": (
         "MISP sets these on default galaxy clusters, PyMISP refuses them; "
-        "the module drops them (generic_ai._normalise_for_pymisp)"
+        "the module drops them (ai_connector._normalise_for_pymisp)"
     ),
     r"/ObjectReference\[\d+\]/object_uuid$": "PyMISP fills in the referencing object's uuid",
     r"/Opinion\[\d+\]/_canEdit$": "MISP UI permission flag, not event data",

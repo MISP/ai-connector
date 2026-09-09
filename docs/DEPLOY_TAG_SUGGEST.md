@@ -13,7 +13,7 @@ laptop ──rsync──▶ nanu:$DEVELOPER_HOST_DIRECTORY_TAG_SUGGEST   (misp-t
                        ▼
                   uvicorn app:app 0.0.0.0:8000  (SUGGEST_API_KEY)
                        ▲
-nanu:$DEVELOPER_HOST_DIRECTORY/generic-ai-misp-module ──POST /suggest──┘
+nanu:$DEVELOPER_HOST_DIRECTORY/ai-connector ──POST /suggest──┘
    .env: MISP_TAG_SUGGEST_URL=http://127.0.0.1:8000, MISP_TAG_SUGGEST_API_KEY=<same key>
 laptop .env: MISP_TAG_SUGGEST_URL=http://nanu:8000, same key   (live tests from the laptop)
 ```
@@ -90,7 +90,7 @@ is required on `/suggest` and `/similar`. Stop with `pkill -f "uvicorn app:app"`
 
 ## 5. Connect the module
 
-On the host, `$DEVELOPER_HOST_DIRECTORY/generic-ai-misp-module/.env` = this repo's `.env` plus:
+On the host, `$DEVELOPER_HOST_DIRECTORY/ai-connector/.env` = this repo's `.env` plus:
 
 ```dotenv
 MISP_TAG_SUGGEST_URL=http://127.0.0.1:8000

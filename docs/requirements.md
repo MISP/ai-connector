@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The **Generic AI MISP module** is a `misp-modules` expansion module that takes a full MISP
+The **ai_connector** is a `misp-modules` expansion module that takes a full MISP
 Event, validates it, and returns MISP Events. Three use-cases fill its hooks (the third, tag suggestion, calls the misp-tag-suggest service instead of an LLM): **CTI info
 extraction** (indicators from the event's EventReport) and **summarization** (of the report or
 of the event). Prompts and sampling parameters are shipped as a MISP galaxy.
@@ -20,7 +20,7 @@ Requirement style: EARS (`WHEN/WHERE/IF … THE module SHALL …`). Status tags:
 
 ## Glossary
 
-- **Module**: `expansion/generic_ai.py`.
+- **Module**: `expansion/ai_connector.py`.
 - **Event**: a MISP Event in the MISP core format, parsed into a PyMISP `MISPEvent`.
 - **EventReport**: markdown report attached to an Event; `event_report` is the joined markdown of all non-deleted reports.
 - **Use-case**: `extraction` (`extract_iocs`) or `summarization` (`summarize(kind)`).
@@ -52,7 +52,7 @@ Requirement style: EARS (`WHEN/WHERE/IF … THE module SHALL …`). Status tags:
 
 ## R4 Use-case selection — *implemented*
 
-1. THE module SHALL read `use_case` from the request body, then module config, then `GENERIC_AI_USE_CASE` in `.env`, default `none` (pass-through).
+1. THE module SHALL read `use_case` from the request body, then module config, then `AI_CONNECTOR_USE_CASE` in `.env`, default `none` (pass-through).
 2. WHEN `use_case` is `extraction`, THE module SHALL call `extract_iocs(event)`.
 3. WHEN `use_case` is `summarization`, THE module SHALL call `summarize(event, kind)` with `kind` from `summary_kind` (request), then `default_summary_kind` (config), default `report`.
 4. WHEN `use_case` is `tag_suggestion`, THE module SHALL call `suggest_tags(event, settings, suggest_limit, suggest_min_score)` against `MISP_TAG_SUGGEST_URL` from `.env` (never from the request), add only tags with `score >= suggest_min_score` that are not on the event, tag the event `ai-computer-assisted` when at least one tag was added, and treat abstention as success with empty output.
@@ -103,7 +103,7 @@ Requirement style: EARS (`WHEN/WHERE/IF … THE module SHALL …`). Status tags:
 
 ## R11 Maintainability — *implemented / ongoing*
 
-1. Source files: `expansion/generic_ai.py` plus at most one file per use-case.
+1. Source files: `expansion/ai_connector.py` plus at most one file per use-case.
 2. Functions ≤ cyclomatic complexity 10; `ruff`, `pylint` clean before commit.
 3. WHEN behaviour changes, docs and `CHANGELOG.md` SHALL change in the same commit.
 4. No new runtime dependency without explicit approval.

@@ -50,7 +50,7 @@ def test_gate_gold_iocs_are_a_subset():
 
 
 def test_request_path_never_imports_classic():
-    for name in ("expansion/generic_ai.py", "genai/extract.py"):
+    for name in ("expansion/ai_connector.py", "genai/extract.py"):
         src = (ROOT / name).read_text("utf-8")
         for needle in ("iocextract", "genai.classic", "from genai import classic"):
             assert needle not in src, f"{name} must not reference {needle}"

@@ -5,7 +5,7 @@
 
 Options: --log-file (default logs/benchmark-llm.log), --prompt (cluster uuid or value).
 
-Reads benchmarks/data/orkl/sample.json + <id>.json, calls expansion.generic_ai.dict_handler
+Reads benchmarks/data/orkl/sample.json + <id>.json, calls expansion.ai_connector.dict_handler
 (the module as deployed) and writes one result per report: <id>.llm.json for extraction,
 <id>.summary.json for summarization of the report, <id>.summary-event.json for --kind event
 (data entries are then whole MISP events from benchmarks.misp_sample). Resumable. A second
@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from expansion import generic_ai
+from expansion import ai_connector
 from genai import llm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -52,10 +52,11 @@ def not_actionable(event: dict) -> list[list[str]]:
 
 
 SUFFIX = {"extraction": "llm", "summarization": "summary"}
-PROMPT_KEY = {
-    "extraction": "prompt_extraction",
-    "report": "prompt_summary_report",
-    "event": "prompt_summary_event",
+USE_CASE = {  # (--use-case, --kind) -> the module's use_case
+    ("extraction", "report"): "infoextraction",
+    ("extraction", "event"): "infoextraction",
+    ("summarization", "report"): "summarization_on_eventReport",
+    ("summarization", "event"): "summarization_on_event",
 }
 
 
@@ -75,20 +76,28 @@ def run_one(
             "info": title,
             "EventReport": [{"name": title, "content": entry.get("plain_text", "")}],
         }
-    request = {"module": "generic_ai", "event": {"Event": event}, "use_case": use_case}
-    if use_case == "summarization":
-        request["summary_kind"] = kind
-    if prompt:  # prompt cluster uuid or value
-        request[PROMPT_KEY[use_case if use_case == "extraction" else kind]] = prompt
+    data: dict = {"Event": event}
+    if USE_CASE[(use_case, kind)] == "summarization_on_eventReport":  # MISP sends one report
+        (report,) = event["EventReport"]
+        data = {
+            "EventReport": report,
+            "Event": {k: event[k] for k in ("uuid", "info") if k in event},
+        }
+    request = {
+        "module": "ai_connector",
+        "use_case": USE_CASE[(use_case, kind)],
+        "data": data,
+        "params": {"prompt": prompt} if prompt else {},  # prompt cluster uuid or value
+    }
     start = time.perf_counter()
-    response = generic_ai.dict_handler(request)
+    response = ai_connector.dict_handler(request)
     seconds = round(time.perf_counter() - start, 3)
     if "error" in response:
         return {"error": response["error"], "seconds": seconds}
     meta = response["metadata"]
     result = {"model": meta["model"], "prompt": meta["prompt"], "seconds": seconds}
-    processed = response["results"]["Event"]["Event"]
     if use_case == "extraction":
+        processed = response["results"]["Event"]["Event"]
         return result | {
             "indicators": indicators(processed),
             "rejected": meta["rejected"],
@@ -96,7 +105,16 @@ def run_one(
             "dated": meta.get("dated", 0),
             "published": meta.get("published"),
         }
-    return result | {"summary": processed["EventReport"][-1]["content"], "words": meta["words"]}
+    return result | {
+        "summary": bare_summary(response["results"]["EventReport"]["content"]),
+        "words": meta["words"],
+    }
+
+
+def bare_summary(content: str) -> str:
+    """The summary without the AI-summary block MISP wants around a report summary."""
+    head, sep, _ = content.partition(f"\n\n{ai_connector.AI_SUMMARY_DELINEATOR}\n\n")
+    return head.removeprefix(ai_connector.AI_SUMMARY_HEADING + "\n") if sep else content
 
 
 def main(argv: list[str] | None = None) -> int:

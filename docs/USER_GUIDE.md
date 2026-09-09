@@ -1,6 +1,6 @@
 # User guide
 
-**Who this is for:** anyone who wants to know what the generic AI MISP module does to a MISP
+**Who this is for:** anyone who wants to know what the ai_connector module does to a MISP
 event — analysts, team leads, reviewers, decision makers. Nothing here needs to be installed
 first.
 
@@ -18,7 +18,7 @@ analyst work, filter it, review it or delete it. Nothing that was already in the
 changed.
 
 ```text
-your MISP event  ──▶  generic AI MISP module  ──▶  the same event
+your MISP event  ──▶  ai_connector module  ──▶  the same event
 (+ its CTI report)     (your LLM, your host)        + AI-tagged additions
 ```
 
@@ -31,8 +31,9 @@ your MISP event  ──▶  generic AI MISP module  ──▶  the same event
 | **Tag suggestion** | any event | taxonomy and galaxy tags proposed from the most similar events already in your MISP (no LLM: a nearest-neighbour service) |
 | **none** (the default) | any event | the event, unchanged — no model is called at all |
 
-One event, one job per call. Which job runs is chosen by the caller
-(`use_case`), not by the model.
+One event, one job per call. Which job runs is chosen by the caller (`use_case`: MISP's
+buttons pick it), not by the model. The report summary is written into the report itself by
+MISP, as a `# AI summary` block above the analyst's text, which is kept.
 
 ## Example: report in, summary out
 
@@ -84,7 +85,7 @@ Extraction adds attributes that read like this in MISP:
 |---|---|
 | type / category | `ip-dst` / `Network activity` |
 | value | `203.0.113.42` |
-| comment | `extracted by generic_ai from EventReport <uuid>` (plus `defanged in source as 203.0.113[.]42`, `first_seen from "2 September 2026"` where that applies) |
+| comment | `extracted by ai_connector from EventReport <uuid>` (plus `defanged in source as 203.0.113[.]42`, `first_seen from "2 September 2026"` where that applies) |
 | tags | `ai-computer-assisted:assistance-level="ai-generated"`, `ai-computer-assisted:review-level="unreviewed"` |
 
 Before an indicator is stored it must survive every one of these checks — anything that fails
@@ -176,10 +177,11 @@ How to read that honestly:
 
 ## What it does not do
 
-- **It is not a button in the MISP web interface yet.** MISP selects expansion modules per
-  attribute type and has no path that sends a whole event to one, so `generic_ai` is not
-  offered in the *Enrich* menus. Today it is called by script or API; the plan for proper UI
-  integration is researched but not started ([INTEGRATION_PLAN.md](INTEGRATION_PLAN.md)).
+- **The buttons exist only on MISP's `feature/ai_tools` branch** (*AI actions* in the event
+  menu, the robot icon on a report, the workflow node), and only for roles with *AI tools*.
+  Extraction has no button there yet; it is called by script or API. On that branch MISP also
+  does not yet attach the `ai-computer-assisted` tags the module returns for summaries; both
+  gaps are written up for the MISP project in `docs/misp-issues/`.
 - **It does not decide anything.** Everything it adds is `unreviewed` by construction; moving a
   review level is an analyst action in MISP.
 - **It does not infer.** No attribution, no kill-chain phase, no TLP unless the report states it

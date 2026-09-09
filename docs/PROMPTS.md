@@ -19,7 +19,7 @@ makes summaries reproducible ([TESTING.md](TESTING.md)).
 
 ```json
 {"name": "Generic AI prompts", "namespace": "generic-ai", "type": "generic-ai-prompts",
- "description": "Prompts, models and sampling parameters used by the Generic AI MISP module",
+ "description": "Prompts, models and sampling parameters used by the ai_connector",
  "uuid": "<uuid4, fixed once>", "version": 1, "icon": "robot"}
 ```
 
@@ -97,7 +97,7 @@ top-level `published` to the answer schema, all copied from the text (docs/USE-C
 `max_tokens` was 2000 until 2026-09-05 (a guess, never measured); the first orkl benchmark run
 truncated the JSON answer on 35 of 100 reports and 5 still overflowed 8000, so the budget is now
 10000 (cluster `meta.version` 2). Answers of that size take up to a few minutes on `nanu`, above
-the module's default `request_timeout` of 120 s: raise `GENERIC_AI_REQUEST_TIMEOUT` accordingly.
+the module's default `request_timeout` of 120 s: raise `AI_CONNECTOR_REQUEST_TIMEOUT` accordingly.
 
 ### `summary-report/qwen3.8-v1` (superseded 2026-09-05)
 

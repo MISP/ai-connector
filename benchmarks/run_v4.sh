@@ -8,7 +8,7 @@
 set -e
 cd "$(dirname "$0")/.."
 V=.venv/bin
-export GENERIC_AI_REQUEST_TIMEOUT=900 MISP_VERIFY_SSL=false
+export AI_CONNECTOR_REQUEST_TIMEOUT=900 MISP_VERIFY_SSL=false
 echo "== v4 start $(date -u +%FT%TZ)"
 $V/python -m genai.classic benchmarks/data/orkl/*.json -o benchmarks/results-v4
 $V/python -m benchmarks.run_llm --results-dir benchmarks/results-v4

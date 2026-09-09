@@ -169,7 +169,7 @@ xychart-beta
 ## Reproduce
 
 ```bash
-GENERIC_AI_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm --use-case summarization --kind event
-GENERIC_AI_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm --use-case summarization --kind event --results-dir benchmarks/results-pass2
+AI_CONNECTOR_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm --use-case summarization --kind event
+AI_CONNECTOR_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm --use-case summarization --kind event --results-dir benchmarks/results-pass2
 python -m benchmarks.compare_summary --kind event --second-dir benchmarks/results-pass2
 ```

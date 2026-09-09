@@ -8,7 +8,7 @@ in [BENCHMARKS_extraction.md](BENCHMARKS_extraction.md) (generated, do not edit 
 
 Model `qwen3.8:latest` digest `22130167c4c2`, Ollama 0.33.2, seed 42 / temperature 0. Extraction
 prompt `cti-info-extraction/qwen3.8-v1` at schema version 3, `max_tokens` 10000,
-`GENERIC_AI_REQUEST_TIMEOUT=900`. Summary clusters `summary-report/qwen3.8-v2` and
+`AI_CONNECTOR_REQUEST_TIMEOUT=900`. Summary clusters `summary-report/qwen3.8-v2` and
 `summary-event/qwen3.8-v2`. Tag suggestion: misp-tag-suggest on nanu, BGE-base
 `a5beb1e3e68b`, index of 2026-09-05 (60,301 train events). One command, `sh benchmarks/run_v4.sh`,
 1 h 10 min on nanu; generated reports, never edited by hand:
@@ -122,7 +122,7 @@ own structural gate (pass rate and the failing rule), length, headings, coverage
 
 python -m benchmarks.orkl --n 100 --seed 42          # draw the sample -> benchmarks/data/orkl/
 python -m genai.classic benchmarks/data/orkl/*.json -o benchmarks/results   # classic extractor (skips sample.json's empty text)
-GENERIC_AI_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm   # LLM extraction -> benchmarks/results/<id>.llm.json
+AI_CONNECTOR_REQUEST_TIMEOUT=900 python -m benchmarks.run_llm   # LLM extraction -> benchmarks/results/<id>.llm.json
 python -m benchmarks.compare                         # -> docs/BENCHMARKS_extraction.md + results/extraction.csv
 .venv/bin/pytest -q tests/test_compare_unit.py       # offline check of the comparison on synthetic data
 

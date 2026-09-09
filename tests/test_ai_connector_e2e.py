@@ -23,7 +23,7 @@ from urllib import error, request
 import pytest
 from conftest import FIXTURE_DIR, FIXTURE_FILES, load_fixture
 
-from expansion import generic_ai
+from expansion import ai_connector
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOG_PATH = PROJECT_ROOT / "logs" / "test_e2e_server.log"
@@ -92,29 +92,54 @@ def misp_modules_url():
                     process.wait(timeout=5)
 
 
-def test_service_lists_generic_ai_module(misp_modules_url) -> None:
+UNREACHABLE_LLM = {
+    "openai_api_base": "http://127.0.0.1:1/v1",
+    "model_id": "m",
+    "request_timeout": 1,
+}
+
+
+def _envelope(use_case: str, data: dict, params: dict | None = None) -> dict:
+    """The envelope MISP's Module::queryAI() posts."""
+    return {
+        "module": "ai_connector",
+        "use_case": use_case,
+        "data": data,
+        "params": params or {},
+        "timeout": 300,
+    }
+
+
+def test_service_lists_the_ai_connector_module(misp_modules_url) -> None:
     with request.urlopen(f"{misp_modules_url}/modules", timeout=5) as response:
         modules = json.loads(response.read().decode("utf-8"))
-    module = next(m for m in modules if m["name"] == "generic_ai")
-    assert module["mispattributes"] == generic_ai.mispattributes
-    assert module["meta"]["version"] == generic_ai.moduleinfo["version"]
+    module = next(m for m in modules if m["name"] == "ai_connector")  # MISP's AI_MODULE_NAME
+    assert module["mispattributes"] == ai_connector.mispattributes
+    assert module["meta"]["version"] == ai_connector.moduleinfo["version"]
+    assert module["meta"]["module-type"] == ["ai"]  # what Module::getEnabledModules keys on
 
 
 @pytest.mark.parametrize("path", FIXTURE_FILES, ids=lambda p: p.stem)
-def test_service_round_trips_every_fixture_event(misp_modules_url, path) -> None:
+def test_service_validates_every_fixture_event(misp_modules_url, path) -> None:
+    """Without an LLM the furthest a valid event gets is the endpoint call: that error, and not
+    an "Invalid MISP Event" one, proves the fixture passed validation through the real server."""
     raw = json.loads(path.read_text(encoding="utf-8"))
-    payload = _post_json(f"{misp_modules_url}/query", {"module": "generic_ai", "event": raw})
-    assert "error" not in payload, payload
-    assert payload["results"]["Event"]["Event"]["uuid"] == raw["Event"]["uuid"]
-    expected_report = "\n\n".join(
-        r["content"] for r in raw["Event"].get("EventReport", []) if not r.get("deleted")
-    )
-    assert payload["event_report"] == expected_report
+    body = _envelope("summarization_on_event", raw, UNREACHABLE_LLM)
+    payload = _post_json(f"{misp_modules_url}/query", body)
+    assert payload["error"].startswith("LLM endpoint unreachable"), payload
 
 
 def test_service_rejects_invalid_event(misp_modules_url) -> None:
-    payload = _post_json(f"{misp_modules_url}/query", {"module": "generic_ai", "event": {}})
+    payload = _post_json(
+        f"{misp_modules_url}/query", _envelope("infoextraction", {"Event": {"date": "x"}})
+    )
     assert payload["error"].startswith("Invalid MISP Event")
+
+
+def test_service_rejects_unknown_params_by_name(misp_modules_url, dummy_event) -> None:
+    body = _envelope("infoextraction", dummy_event, {"summary_kind": "event", "min_confidence": 2})
+    payload = _post_json(f"{misp_modules_url}/query", body)
+    assert payload["error"].startswith("Invalid request: ") and "summary_kind" in payload["error"]
 
 
 # --- live MISP instance -------------------------------------------------------------------------
@@ -128,14 +153,13 @@ def _fixture_uuids() -> list[str]:
 @pytest.mark.parametrize("uuid", _fixture_uuids())
 def test_live_misp_events_validate(misp_api, uuid) -> None:
     live = misp_api.fetch(uuid)
-    result = generic_ai.dict_handler({"module": "generic_ai", "event": live})
-    assert "error" not in result, result
-    assert result["results"]["Event"]["Event"]["uuid"] == uuid
+    event = ai_connector.validate_event(live["Event"])  # what dict_handler does before any use-case
+    assert event.uuid == uuid
     fixture = load_fixture(uuid)
     expected_report = "\n\n".join(
         r["content"] for r in fixture["Event"].get("EventReport", []) if not r.get("deleted")
     )
-    assert result["event_report"] == expected_report
+    assert ai_connector.get_event_report(event) == expected_report
 
 
 # --- use-cases through the real misp-modules server (live LLM; skips when it is down) ---
@@ -144,26 +168,20 @@ def test_live_misp_events_validate(misp_api, uuid) -> None:
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
-        ({"use_case": "summarization", "summary_kind": "report"}, "kind"),
-        ({"use_case": "extraction"}, "added"),
+        ("summarization_on_event", "EventReport"),
+        ("infoextraction", "Attribute"),
     ],
 )
 def test_service_runs_use_cases(
     misp_modules_url, llm_settings, dummy_event, body, expected
 ) -> None:
-    payload = _post_json(
-        f"{misp_modules_url}/query",
-        {"module": "generic_ai", "event": dummy_event, **body},
-        timeout=300,
-    )
+    payload = _post_json(f"{misp_modules_url}/query", _envelope(body, dummy_event), timeout=300)
     assert "error" not in payload, payload
-    assert expected in payload["metadata"]
+    assert expected in payload["results"]
     assert payload["metadata"]["model"]["name"] == llm_settings.model
-    event = payload["results"]["Event"]["Event"]
-    tagged = {t["name"] for t in event.get("Tag", [])} | {
-        t["name"] for a in event.get("Attribute", []) for t in a.get("Tag", [])
+    tagged = {t["name"] for t in payload["results"].get("Tag", [])} | {
+        t["name"] for a in payload["results"].get("Attribute", []) for t in a.get("Tag", [])
     }
-    assert (
-        'ai-computer-assisted:assistance-level="ai-generated"' in tagged
-        or body["use_case"] == "extraction"
-    )
+    assert 'ai-computer-assisted:assistance-level="ai-generated"' in tagged or not payload[
+        "results"
+    ].get("Attribute")

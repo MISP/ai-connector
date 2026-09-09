@@ -19,6 +19,7 @@ MISP_TYPES: frozenset[str] = frozenset(DESCRIBE_TYPES["types"])
 HASH_TYPES = ("md5", "sha1", "sha256")
 HASH_BY_LENGTH = {32: "md5", 40: "sha1", 64: "sha256", 128: "sha512"}
 FREE_TEXT_TYPES = frozenset({"other", "text", "comment"})  # carry no indicator semantics
+COMMENT = "extracted by ai_connector from EventReport"  # provenance on every added attribute
 _DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$", re.I
 )
@@ -257,9 +258,9 @@ def extract_iocs(  # filters, counts and provenance in one pass; pylint: disable
     report_uuids = ", ".join(
         r.uuid for r in event.event_reports if not getattr(r, "deleted", False)
     )
-    objects = _add(event, accepted, f"extracted by generic_ai from EventReport {report_uuids}")
+    objects = _add(event, accepted, f"{COMMENT} {report_uuids}")
     return {
-        "use_case": "extraction",
+        "use_case": "infoextraction",
         "added": len(accepted),
         "objects": objects,
         "rejected": rejected,

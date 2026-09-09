@@ -21,7 +21,7 @@ import sys
 import pytest
 from misp_compare import misp_event_diff
 
-from expansion import generic_ai
+from expansion import ai_connector
 
 SAMPLE_SIZE = 10
 
@@ -31,8 +31,8 @@ def random_uuids(misp_api) -> list[str]:
     seed = int(os.environ.get("E2E_SEED") or secrets.randbelow(10**9))
     uuids = sorted(entry["uuid"] for entry in misp_api.index(limit=500))
     chosen = random.Random(seed).sample(uuids, min(SAMPLE_SIZE, len(uuids)))
-    generic_ai.E2E_DIR.mkdir(parents=True, exist_ok=True)
-    (generic_ai.E2E_DIR / "last_run.json").write_text(
+    ai_connector.E2E_DIR.mkdir(parents=True, exist_ok=True)
+    (ai_connector.E2E_DIR / "last_run.json").write_text(
         json.dumps({"seed": seed, "uuids": chosen}, indent=2), encoding="utf-8"
     )
     print(f"\nE2E_SEED={seed} events={chosen}")
@@ -43,9 +43,9 @@ def test_process_event_round_trip(misp_api, random_uuids) -> None:
     failures: list[str] = []
     for uuid in random_uuids:
         original = misp_api.fetch(uuid)
-        event = generic_ai.validate_event(original["Event"])
-        generic_ai.process_event(event, e2etest=True)
-        saved = json.loads((generic_ai.E2E_DIR / f"{uuid}.json").read_text(encoding="utf-8"))
+        event = ai_connector.validate_event(original["Event"])
+        ai_connector.process_event(event, e2etest=True)
+        saved = json.loads((ai_connector.E2E_DIR / f"{uuid}.json").read_text(encoding="utf-8"))
         differences = misp_event_diff(original["Event"], saved["Event"])
         print(f"{uuid}: {'OK' if not differences else f'{len(differences)} differences'}")
         failures.extend(f"{uuid}{difference}" for difference in differences)

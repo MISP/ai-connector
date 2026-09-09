@@ -12,6 +12,7 @@ from genai import llm, prompts
 from genai.refang import refang
 
 KINDS = ("report", "event")
+USE_CASE_BY_KIND = {"report": "summarization_on_eventReport", "event": "summarization_on_event"}
 _INDICATOR_RES = (
     re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),  # IPv4
     re.compile(r"\b[a-f0-9]{32}\b|\b[a-f0-9]{40}\b|\b[a-f0-9]{64}\b", re.I),  # hashes
@@ -57,6 +58,8 @@ def render_event(event: MISPEvent) -> str:
 def check_summary(summary: str, source: str, prompt: prompts.Prompt) -> list[str]:
     """Structural gate (TESTING.md L3): headings, length, no indicator that is not in the input."""
     problems = [f"missing heading {h!r}" for h in prompt.headings if h not in summary]
+    if re.search(r"^\s*={10,}\s*$", summary, re.M):  # MISP reads such a line as its delineator
+        problems.append("a line of equals signs (reserved for the AI summary block)")
     words = len(re.findall(r"\S+", re.sub(r"^#.*$", "", summary, flags=re.M)))
     if prompt.max_words and words > prompt.max_words:
         problems.append(f"{words} words > {prompt.max_words}")
@@ -100,7 +103,7 @@ def summarize(
     event.add_event_report(name=name, content=summary)
     prompts.tag_ai_generated(event)
     return {
-        "use_case": "summarization",
+        "use_case": USE_CASE_BY_KIND[kind],
         "kind": kind,
         "report_name": name,
         "words": len(summary.split()),

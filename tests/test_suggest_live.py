@@ -7,7 +7,7 @@ outcomes: added tags exist on the dev MISP and the event is AI-tagged, or nothin
 import pytest
 from conftest import WITH_REPORT, load_fixture
 
-from expansion import generic_ai
+from expansion import ai_connector
 from genai import prompts, suggest
 
 AI_TAGS = set(prompts.AI_TAGS)
@@ -19,7 +19,7 @@ def _tags(event) -> set[str]:
 
 @pytest.mark.parametrize("uuid", [WITH_REPORT])
 def test_suggested_tags_exist_on_the_instance(suggest_settings, misp_api, uuid) -> None:
-    event = generic_ai.validate_event(load_fixture(uuid)["Event"])
+    event = ai_connector.validate_event(load_fixture(uuid)["Event"])
     before = _tags(event)
     result = suggest.suggest_tags(event, suggest_settings, limit=5)
     assert result["model_version"] and result["dataset_manifest_sha256"]
@@ -34,9 +34,16 @@ def test_suggested_tags_exist_on_the_instance(suggest_settings, misp_api, uuid) 
 
 
 def test_handler_round_trip_through_the_service(suggest_settings) -> None:
-    result = generic_ai.dict_handler(
-        {"event": load_fixture(WITH_REPORT), "use_case": "tag_suggestion", "suggest_limit": 3}
+    result = ai_connector.dict_handler(
+        {
+            "use_case": "tag_suggest",
+            "data": load_fixture(WITH_REPORT),
+            "params": {"suggest_limit": 3},
+        }
     )
     assert "error" not in result, result
     assert result["metadata"]["model"]["server"] == suggest_settings.base_url
+    names = [t["name"] for t in result["results"]["Tag"]]
     assert len(result["metadata"]["added"]) <= 3
+    if names:  # the suggestions, then the two AI tags — what MISP shows in its modal
+        assert names[-2:] == list(prompts.AI_TAGS) and len(names) <= 5

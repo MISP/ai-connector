@@ -1,15 +1,19 @@
 # Use-cases
 
-Two LLM use-cases are in focus, plus tag suggestion (UC3) which uses no LLM. All keep the module contract **MISP Event in → MISP Event out**
-([ARCHITECTURE.md](ARCHITECTURE.md)) and both send *a prompt plus the event's content* to the
-LLM configured in `.env` (`OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY`; any
-OpenAI-compatible chat endpoint, today Ollama on `nanu`). Prompts and sampling parameters are
+Two LLM use-cases are in focus, plus tag suggestion (UC3) which uses no LLM, plus `ping`.
+The module speaks MISP's `ai_connector` contract (request `{"use_case", "data", "params"}`,
+answer `{"results": …}`; the shapes are in [DEVELOPER_GUIDE.md §3](DEVELOPER_GUIDE.md)) and
+both LLM use-cases send *a prompt plus the event's content* to the endpoint in `params`
+(MISP's `Plugin.AI_*` settings) or, failing that, in `.env` (`OPENAI_BASE_URL`, `OPENAI_MODEL`,
+`OPENAI_API_KEY`; any OpenAI-compatible chat endpoint, today Ollama on `nanu`). Prompts and sampling parameters are
 configurable and shipped as a MISP galaxy ([PROMPTS.md](PROMPTS.md)). Tests for both are
 specified in [TESTING.md](TESTING.md); formal requirements in [requirements.md](requirements.md).
 
 Status: **implemented** in `genai/extract.py`, `genai/summarize.py` and `genai/suggest.py`, dispatched by
-`process_event()` in `expansion/generic_ai.py`. The default `use_case` is `none` (pass-through,
-no LLM call), so the round-trip gate and plain validation never touch the LLM.
+`process_event()` in `expansion/ai_connector.py` on `use_case` = `infoextraction` (UC1),
+`summarization_on_eventReport` / `summarization_on_event` (UC2), `tag_suggest` (UC3); `ping`
+(`genai/llm.py`) checks the endpoint and the model without generating. `process_event()` without
+a use-case is a pass-through, so the round-trip gate and plain validation never touch the LLM.
 
 ## Rule that applies to every output
 
@@ -84,7 +88,7 @@ request instead of being reported as a rejection.
 If the model output is not valid JSON, the request fails with an error — never partial results.
 
 Each added attribute carries the two AI tags and
-`comment = "extracted by generic_ai from EventReport <uuid>"`.
+`comment = "extracted by ai_connector from EventReport <uuid>"`.
 
 ## UC2 — Summarization
 
@@ -94,22 +98,19 @@ Each added attribute carries the two AI tags and
 
 | `kind` | summarises | attached as |
 |---|---|---|
-| `report` (default) | the EventReport markdown (`event_report`) | a **new** EventReport "AI summary of *report name*", worded as an analyst assessment |
-| `event` | the event's attributes, objects, tags, galaxies and related-event links, rendered by the module into a compact, sorted markdown table (uuids kept) | a **new** EventReport "AI summary of event *uuid*" |
+| `report` (`use_case: summarization_on_eventReport`) | the one EventReport MISP sends (`data.EventReport`, with `data.Event` as context) | `results.EventReport` = the **revised report**: `# AI summary`, the summary (worded as an analyst assessment), a blank line, `==================`, then the original text. MISP writes it into the same report and strips the block again before a re-run; the analyst's text is never lost |
+| `event` (`use_case: summarization_on_event`) | the event's attributes, objects, tags, galaxies and related-event links, rendered by the module into a compact, sorted markdown table (uuids kept) | `results.EventReport` = a **new** EventReport "AI summary of event *uuid*" |
 
-Both never modify existing reports; the event gets the two AI tags. Unknown `kind` → error.
+Both answer `results.Tag` with the two AI tags for the event. A summary containing a line of ten
+or more `=` is refused (it would be read as the delineator).
 
-Why a string enum and not a boolean: it reads in config and logs (`summary_kind: event`),
-and `both` or `attributes-only` can be added without changing the signature.
-
-How the caller selects it:
+How MISP selects it:
 
 ```json
-{"module": "generic_ai", "event": {"Event": {...}},
- "use_case": "summarization", "summary_kind": "event"}
+{"module": "ai_connector", "use_case": "summarization_on_event", "data": {"Event": {...}}, "params": {...}}
+{"module": "ai_connector", "use_case": "summarization_on_eventReport",
+ "data": {"EventReport": {"name": "...", "content": "..."}, "Event": {"uuid": "...", "info": "..."}}, "params": {...}}
 ```
-
-`summary_kind` falls back to the module config `summary_kind`, then to `report`.
 
 Deterministic rendering for `kind=event` matters for testing: attributes sorted by
 `(type, value)`, objects by `(name, uuid)`, tags by name, no timestamps, so identical events
@@ -127,7 +128,7 @@ indexed event is not similar enough.
 | | |
 |---|---|
 | input | the whole event, serialised with PyMISP and POSTed to `MISP_TAG_SUGGEST_URL/suggest` with `limit` (1..10). The service strips existing tags from its model input itself. |
-| output | the same event with the suggested tags added (`event.add_tag`), plus the two AI tags on the event when at least one tag was added |
+| output | `results.Tag = [{name, score}, …]` — the suggestions, plus the two AI tags when at least one tag was suggested (MISP previews the list and attaches what the user ticks) |
 | filters | `score >= suggest_min_score`; tags already on the event are skipped (recorded as `skipped_existing`) |
 | abstention | not an error: no tag, no AI tag, metadata `abstained: true` |
 | errors | service unreachable, HTTP error, malformed answer → `{"error": "misp-tag-suggest: …"}`, nothing added |
@@ -140,29 +141,35 @@ misp-modules server (ARCHITECTURE.md). The call goes through the same stdlib HTT
 the LLM (`genai.llm.http_json`); tests fake it.
 
 ```json
-{"module": "generic_ai", "event": {"Event": {...}},
- "use_case": "tag_suggestion", "suggest_limit": 5, "suggest_min_score": 0.3}
+{"module": "ai_connector", "use_case": "tag_suggest", "data": {"Event": {...}},
+ "params": {"suggest_limit": 5, "suggest_min_score": 0.3}}
 ```
+
+## Ping
+
+`{"use_case": "ping", "params": {...}}` — no `data`. Answers
+`results = {ok, endpoint, model {name, server, digest, quantization}, latency_ms, models_listed,
+tag_suggest {url, reachable}}` after one `GET /models` on the endpoint (the model must be
+listed) and one `/health` on the tag-suggestion service; no generation. An unreachable endpoint
+or an unlisted model is `{"error": …}`. Meant for MISP's *Test LLM* button on the AI settings
+tab (reserved on MISP's side, not wired yet).
 
 ## Configuration
 
-All keys are `moduleconfig` entries (settable in MISP's module settings), overridable per
-request only for the keys marked *request*. Endpoint and API key are **never** settable from
-the request body ([IMPROVEMENTS.md](IMPROVEMENTS.md) item 3).
+Every knob is a `params` key of the request; MISP fills the first seven from its `Plugin.AI_*`
+settings. Precedence: **`params` > `.env` > built-in default**; an unknown key or a value of
+the wrong type is an error. The full table with the `.env` names is
+[OPERATOR_GUIDE.md 2.1](OPERATOR_GUIDE.md#21-settings).
 
-| key | default | request | meaning |
-|---|---|---|---|
-| `use_case` | `none` | yes | `none` (pass-through), `extraction`, `summarization` or `tag_suggestion` |
-| `summary_kind` | `report` | yes | `report` or `event` |
-| `prompt_extraction`, `prompt_summary_report`, `prompt_summary_event` | bundled galaxy cluster | yes | galaxy cluster uuid or `value`, or inline prompt text |
-| `model_id` | `OPENAI_MODEL` from `.env` | yes | must exist on the endpoint |
-| sampling (`temperature`, `seed`, `top_p`, `max_tokens`, `think`) | from the prompt cluster (`0` / `42` / `1` / per use-case / `false`) | via the cluster | select another cluster to change them |
-| `min_confidence` | `0.9` | yes | UC1 gate |
-| `suggest_limit`, `suggest_min_score` | `5`, `0.0` | yes | UC3: tags requested (1..10), minimum vote score |
-| `request_timeout` | `120` s | no | LLM / service call bound; timeout → error, no fallback |
-| `api_base`, `api_key`, `MISP_TAG_SUGGEST_URL`, `MISP_TAG_SUGGEST_API_KEY` | `.env` | **no** | endpoints |
-
-Precedence: request body (allowed keys only) > module config > `.env` > built-in default.
+| `params` key | default | meaning |
+|---|---|---|
+| `openai_api_base`, `api_key`, `model_id` | `.env` `OPENAI_*` | the LLM endpoint (MISP's design: the caller chooses it, see the security posture) |
+| `temperature`, `seed`, `top_p`, `max_tokens`, `think` | the prompt cluster's values | sampling overrides for that call, echoed in `metadata.sampling` |
+| `prompt` | the bundled galaxy cluster | galaxy cluster uuid or `value`, or inline prompt text (per use-case) |
+| `request_timeout` | `120` s | LLM / service call bound; timeout → error, no fallback |
+| `min_confidence` | `0.9` | UC1 gate |
+| `suggest_limit`, `suggest_min_score` | `5`, `0.0` | UC3: tags requested (1..10), minimum vote score |
+| `MISP_TAG_SUGGEST_URL`, `MISP_TAG_SUGGEST_API_KEY` | `.env` only | the tag-suggestion service (MISP has no setting for it) |
 
 ## Not in focus (parked)
 

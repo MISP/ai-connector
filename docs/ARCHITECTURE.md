@@ -6,33 +6,31 @@
 The module no longer works on a single attribute. It takes a **full MISP Event** and returns MISP Events.
 
 ```text
-caller / MISP ──POST /query──▶ misp-modules ──handler(json)──▶ expansion/generic_ai.py
-                                                                  │
-   {"event": {"Event": …}}  or  {"data": [{"Event": …}]}          │ _extract_event
-                                                                  ▼
-                                                    PyMISP MISPEvent.load()   ← validation
-                                                                  │  (PyMISPError → {"error": …})
-                                                                  ▼
-                                                      event: MISPEvent
-                                                       │              │
-                                          get_event_report(event)     │
-                                                       │              │
-                                          event_report: str (markdown of all non-deleted EventReports)
-                                                       │              │
-                                 process_eventReport(event_report)   process_event(event)
-                                            → MISPEvent                  → MISPEvent
-                                                       └──────┬───────┘
-                                                              ▼
-              {"results": {"Event": {...}, "ReportEvent": {...}}, "event_report": "..."}
+MISP (Module::queryAI) ──POST /query──▶ misp-modules ──handler(json)──▶ expansion/ai_connector.py
+                                                                          │
+   {"use_case": …, "data": {"Event": …} | {"EventReport": …, "Event": …}, │ resolve_settings(params)
+    "params": {openai_api_base, api_key, model_id, …}, "timeout": 300}    │ _extract_data
+                                                                          ▼
+                                                            PyMISP MISPEvent.load()   ← validation
+                                                                          │  (PyMISPError → {"error": …})
+                                                                          ▼
+                                                              event: MISPEvent
+                                                                          │
+                                                    process_event(event, settings, metadata)
+                                                                          │
+                                                                     _results()
+                                                                          ▼
+       {"results": {"EventReport": {name, content}} | {"Tag": [{name}]} | {"Event", "Attribute", "Object"}, "metadata": …}
 ```
 
-`process_event()` dispatches on `use_case` (`none` = pass-through, `extraction`, `summarization`,
-`tag_suggestion`) to `genai/extract.py` / `genai/summarize.py` / `genai/suggest.py`; `process_eventReport()` is still a dummy. Code lives
+`process_event()` dispatches on `use_case` (`summarization_on_event`, `summarization_on_eventReport`,
+`tag_suggest`, `infoextraction`; `ping` is answered before validation) to `genai/summarize.py` /
+`genai/suggest.py` / `genai/extract.py`. Code lives
 in the `genai/` package because misp-modules loads every `.py` in `expansion/` as a module, so
-helpers cannot sit next to `generic_ai.py`; the module adds the repo root to `sys.path` on import.
+helpers cannot sit next to `ai_connector.py`; the module adds the repo root to `sys.path` on import.
 `genai/classic.py` is the odd one out: a regex baseline over `iocextract` (refang on) that
 benchmarks and tests compare the LLM extraction against. It is deliberately not imported by
-`generic_ai.py` or `extract.py`, and a unit test keeps it that way.
+`ai_connector.py` or `extract.py`, and a unit test keeps it that way.
 
 ### Use-case hooks (contract in USE-CASES.md, tests in TESTING.md)
 
@@ -41,12 +39,12 @@ researched in INTEGRATION_PLAN.md; today the module is reachable through the mis
 server only.
 
 ```text
-process_event(event, use_case, …)
-   ├─ use_case == "extraction"     → extract_iocs(event)              → event + tagged Attributes/Objects
-   ├─ use_case == "summarization"  → summarize(event, kind)           → event + tagged EventReport + event tags
-   │                                   kind == "report": input = event_report
-   │                                   kind == "event":  input = render_event(event)  (sorted, deterministic)
-   └─ use_case == "tag_suggestion" → suggest_tags(event)              → event + suggested tags + AI tags
+process_event(event, settings, …)
+   ├─ infoextraction                → extract_iocs(event)              → event + tagged Attributes/Objects
+   ├─ summarization_on_eventReport  → summarize(event, "report")       → event + tagged EventReport + event tags
+   │                                   input = the one report MISP sent
+   ├─ summarization_on_event        → summarize(event, "event")        → input = render_event(event)  (sorted, deterministic)
+   └─ tag_suggest                   → suggest_tags(event)              → event + suggested tags + AI tags
                                        POST event to misp-tag-suggest /suggest (no LLM, HTTP only)
 UC1/UC2:  prompt cluster (galaxy) ──┐
        input text ───────────────┼─▶ llm_chat(messages, params)  ──▶ post-filters / structural checks ──▶ tag ──▶ event
@@ -59,7 +57,8 @@ UC1/UC2:  prompt cluster (galaxy) ──┐
   because it needs torch, faiss and sentence-transformers, which this repo (pymisp only,
   running inside misp-modules) does not take on; its URL and key come from `.env`
   (`MISP_TAG_SUGGEST_URL`, `MISP_TAG_SUGGEST_API_KEY`). Both repos share lint rules, CI and
-  `.env` key names (its `AGENTS.md`). Endpoint and key come from `.env` only; timeout → error, no fallback. Thinking is
+  `.env` key names (its `AGENTS.md`). The LLM endpoint, key and model come from the request's
+  `params` (MISP's settings), else from `.env`; timeout → error, no fallback. Thinking is
   disabled via `reasoning_effort: none` (Ollama ignores `think: false` on the OpenAI route).
 - **Prompt resolution**: `prompt_*` config → galaxy cluster (uuid or value) → inline text →
   bundled default; the cluster also fixes temperature/seed/top_p/max_tokens/think (PROMPTS.md).

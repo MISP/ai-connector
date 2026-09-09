@@ -12,7 +12,7 @@ import re
 import pytest
 from conftest import PROJECT_ROOT, live_gate, load_fixture
 
-from expansion import generic_ai
+from expansion import ai_connector
 from genai import extract, llm, prompts, summarize
 from genai.refang import refang
 
@@ -82,19 +82,19 @@ def test_extraction_precision_gate(llm_settings, uuid) -> None:
     raw = load_fixture(uuid)
     for key in ("Attribute", "Object"):  # start from the report alone, gold is report-derived
         raw["Event"][key] = []
-    event = generic_ai.validate_event(raw["Event"])
+    event = ai_connector.validate_event(raw["Event"])
     gold = json.loads((GOLD_DIR / f"{uuid}.iocs.json").read_text())
-    precision, _recall = _precision(event, generic_ai.get_event_report(event), gold, llm_settings)
+    precision, _recall = _precision(event, ai_connector.get_event_report(event), gold, llm_settings)
     assert precision >= 0.95
 
 
 def test_extraction_recall_report(llm_settings) -> None:
     """Informational: how much of the Emotet sample's hashes the high-confidence policy keeps."""
-    event = generic_ai.validate_event(
+    event = ai_connector.validate_event(
         {"info": "orkl sample", "EventReport": [{"name": "orkl", "content": ORKL.read_text()}]}
     )
     gold = json.loads((GOLD_DIR / "orkl-sample.iocs.json").read_text())
-    precision, recall = _precision(event, generic_ai.get_event_report(event), gold, llm_settings)
+    precision, recall = _precision(event, ai_connector.get_event_report(event), gold, llm_settings)
     assert precision >= 0.95
     assert recall >= 0.0  # reported, not gated
 
@@ -102,18 +102,18 @@ def test_extraction_recall_report(llm_settings) -> None:
 def test_extraction_is_deterministic(llm_settings, dummy_event) -> None:
     results = []
     for _ in range(2):
-        event = generic_ai.validate_event(dummy_event["Event"])
-        generic_ai.process_event(event, settings={"use_case": "extraction"})
+        event = ai_connector.validate_event(dummy_event["Event"])
+        ai_connector.process_event(event, settings={"use_case": "infoextraction"})
         results.append(sorted((a.type, a.value) for a in event.attributes))
     assert results[0] == results[1]
 
 
 @pytest.mark.parametrize("kind", summarize.KINDS)
 def test_summary_structural_gate_and_golden(llm_settings, dummy_event, kind, request) -> None:
-    event = generic_ai.validate_event(dummy_event["Event"])
+    event = ai_connector.validate_event(dummy_event["Event"])
     metadata: dict = {}
-    generic_ai.process_event(
-        event, settings={"use_case": "summarization", "summary_kind": kind}, metadata=metadata
+    ai_connector.process_event(
+        event, settings={"use_case": summarize.USE_CASE_BY_KIND[kind]}, metadata=metadata
     )
     summary = event.event_reports[-1].content
     assert set(prompts.AI_TAGS) <= {t.name for t in event.tags}

@@ -28,13 +28,14 @@ uv pip install --python .venv/bin/python -e ".[dev,e2e]"   # deps + pytest/ruff/
 ## 2. Code map
 
 ```text
-expansion/generic_ai.py   the module: misp-modules contract, request shapes, validation, settings, dispatch
+expansion/ai_connector.py   the module: misp-modules contract, request shapes, validation, settings, dispatch
 genai/                    everything else, because misp-modules imports EVERY .py in expansion/
   llm.py                    the only network code: http_json(), llm_chat(), model_info(), LLMSettings
   prompts.py                prompt galaxy clusters, the pinned ai-computer-assisted tags, tag_ai_generated()
   extract.py                UC1 — candidates from the model, filters, objects, provenance comments
   summarize.py              UC2 — render_event(), the structural gate check_summary(), summarize()
   suggest.py                UC3 — the misp-tag-suggest HTTP client (no LLM)
+                            llm.ping() is the "ping" use-case (endpoint up, model listed, no generation)
   refang.py, dates.py       the two normalisations extraction is allowed to perform
   classic.py                regex baseline over iocextract — benchmarks and tests only, never imported by the module
 galaxies/ · clusters/     the generic-ai-prompts MISP galaxy (prompt text + model + sampling parameters)
@@ -48,7 +49,7 @@ logs/                     benchmark and test-run logs (gitignored), never produc
 Two structural facts worth knowing before you move a file:
 
 - **misp-modules imports every `.py` in `expansion/`** as a module, so helper files cannot live
-  next to `generic_ai.py`; that is why `genai/` exists. `generic_ai.py` puts the repository root
+  next to `ai_connector.py`; that is why `genai/` exists. `ai_connector.py` puts the repository root
   on `sys.path` on import.
 - `genai/classic.py` is deliberately unreachable from the request path, and
   `tests/test_classic_unit.py` keeps it that way. It exists so benchmarks have a deterministic
@@ -56,31 +57,60 @@ Two structural facts worth knowing before you move a file:
 
 ## 3. The contract and the data flow
 
+The contract is the one MISP's `Module::queryAI()` speaks (MISP `feature/ai_tools`,
+[docs/dev/ai_integration.md](https://github.com/MISP/MISP/blob/feature/ai_tools/docs/dev/ai_integration.md)):
+
+```json
+{"module": "ai_connector", "use_case": "summarization_on_eventReport",
+ "data": {"EventReport": {"name": "...", "content": "..."}, "Event": {"uuid": "...", "info": "..."}},
+ "params": {"openai_api_base": "http://127.0.0.1:11434/v1", "api_key": "", "model_id": "gemma4:12b",
+            "temperature": 0, "request_timeout": 120, "suggest_limit": 5, "suggest_min_score": 0},
+ "timeout": 300}
+```
+
+| `use_case` | `data` | `results` |
+|---|---|---|
+| `summarization_on_event` | `{"Event": {...}}` | `EventReport {name, content}` (a new report) + `Tag` (the two AI tags) |
+| `summarization_on_eventReport` | `{"EventReport": {...}, "Event": {...}}` (one report; a bare report dict works too) | `EventReport {name, content}` = the full revised report: `# AI summary`, the summary, a blank line, `==================`, the original text — MISP merges it in place + `Tag` |
+| `tag_suggest` | `{"Event": {...}}` | `Tag [{name, score}]` ≥ `suggest_min_score`, at most `suggest_limit`, plus the two AI tags when anything was suggested; `[]` on abstention |
+| `infoextraction` | `{"Event": {...}}` | `Event` (the processed event), `Attribute` and `Object` (what this run added, each AI-tagged) — no MISP UI path yet |
+| `ping` | none | `{ok, endpoint, model {name, server, digest}, latency_ms, models_listed, tag_suggest {url, reachable}}` |
+| any | | `{"error": "..."}` — one key, every validation problem named; never a partial result |
+
+`params` are MISP's `Plugin.AI_*` settings (unset ones omitted) and override `.env`; the module
+also accepts `prompt` (cluster uuid, value or inline text), `min_confidence`, `seed`, `top_p`,
+`max_tokens`, `think`. An unknown key or an out-of-range value is an error, never a silent
+no-op. `timeout` is misp-modules' own per-request bound.
+
 ```text
-POST /query {"module": "generic_ai", "use_case": …, "event": {"Event": {...}}}
+POST /query {"module": "ai_connector", "use_case": …, "data": …, "params": {…}}
    │
-   ├─ _extract_event()      accept "event" or "data"[0], unwrap {"Event": ...}
-   ├─ validate_event()      PyMISP MISPEvent.load(force_timestamps=True) → error dict on invalid input
-   ├─ get_event_report()    markdown of all non-deleted EventReports ("" if none)
-   ├─ resolve_settings()    request body > module config > .env GENERIC_AI_<KEY> > default
+   ├─ resolve_settings()    params > .env (OPENAI_* / AI_CONNECTOR_<KEY>) > default; unknown key → error
+   ├─ _extract_data()       unwrap {"Event": …}; for the report use-case build an event around the one report
+   ├─ validate_event()      PyMISP MISPEvent.load(force_timestamps=True) → "Invalid MISP Event: …"
    ├─ process_event()       dispatch on use_case; fills the metadata dict
-   │     none           → pass-through, no model call
-   │     extraction     → genai/extract.py    extract_iocs(event, report, …)
-   │     summarization  → genai/summarize.py  summarize(event, report, kind, …)
-   │     tag_suggestion → genai/suggest.py    suggest_tags(event, …)
-   ├─ process_eventReport() still a dummy: an event holding the report markdown
-   └─ {"results": {"Event": …, "ReportEvent": …}, "event_report": "…", "metadata": {…}}
+   │     summarization_on_event        → genai/summarize.py  summarize(event, report, "event", …)
+   │     summarization_on_eventReport  → genai/summarize.py  summarize(event, report, "report", …)
+   │     tag_suggest                   → genai/suggest.py    suggest_tags(event, …)
+   │     infoextraction                → genai/extract.py    extract_iocs(event, report, …)
+   │     (ping never reaches here: llm.ping() answers before validation)
+   ├─ _results()            only what was produced, in the shape MISP reads (table above)
+   └─ {"results": {…}, "metadata": {…}}  or  {"error": "…"}
 ```
 
 `dict_handler(request)` is the in-process entry point used by tests, benchmarks and (preferably)
 misp-modules itself; `handler(q)` is the JSON-string entry the module contract requires.
+`process_event(event, settings=…)` is the engine entry (settings from `resolve_settings()` plus
+`use_case`; absent or `"none"` = pass-through, which the round-trip gate relies on).
 Background and the diagrams: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 4. Invariants — do not break these
 
 Each one has a test; if your change makes a test fail, change the change, not the test.
 
-1. **MISP Event in → MISP Event out.** No side format, no bespoke response contract.
+1. **MISP data in → only what was produced out.** The request and answer shapes are MISP's
+   (`Module::queryAI()`); `results` holds the new report, the tag names or the added elements,
+   never a partial result.
 2. **Everything the model produced is tagged** with both pinned `ai-computer-assisted` strings —
    per attribute for extraction, on the event for event-level output. Nothing LLM-made may
    leave untagged.
@@ -91,13 +121,20 @@ Each one has a test; if your change makes a test fail, change the change, not th
    ([IMPROVEMENTS.md](IMPROVEMENTS.md) item 7).
 5. **The in-source rule.** An extracted value must appear literally in the (refanged) report.
    Refang and hash re-typing are the only normalisations; both are recorded in the comment.
-6. **Endpoint and key come from `.env` only**, never from a request.
+6. **Endpoint, key and model come from MISP's `Plugin.AI_*` settings (`params`) when sent,
+   else from `.env`.** A request can therefore point the module at another endpoint — that is
+   MISP's design, so the misp-modules port must be reachable from MISP only (operator guide 4.6).
+   Every other knob is named and bounded in `PARAMS`; an unknown one is an error.
 7. **PyMISP is the validator; no JSON schema.** None of the upstream schemas defines
    `EventReport` ([ARCHITECTURE.md](ARCHITECTURE.md), "Schema provenance"). Do not vendor or
    invent one.
 8. **`pymisp` is the only third-party runtime dependency.** `iocextract` is declared for the
    benchmark baseline and must stay off the request path. A new dependency needs explicit
    approval ([AGENTS.md](../AGENTS.md)).
+10. **The module is `ai_connector`** — the file name `expansion/ai_connector.py` is the module
+    name misp-modules serves and the name MISP hard-wires (`Module::AI_MODULE_NAME`), with
+    `"module-type": ["ai"]`. The prompt galaxy keeps its name `generic-ai-prompts`: it is a
+    MISP galaxy identifier that lives on instances.
 9. **Docs and `CHANGELOG.md` change in the same commit as the behaviour.**
 
 ### PyMISP quirks the module works around
@@ -127,10 +164,10 @@ The thinnest end-to-end path, in the order that keeps the suite green:
    settings, prompt) and returning a **metadata dict**. It mutates the event through PyMISP's
    API and calls `prompts.tag_ai_generated(...)` for anything it adds.
 4. **Register it**: a key in `DEFAULTS` if it needs a setting, the name in `USE_CASES`, a branch
-   in `_run_use_case()` in `expansion/generic_ai.py`. Keep the dispatch flat.
+   in `_run_use_case()` in `expansion/ai_connector.py`. Keep the dispatch flat.
 5. **Tests, three layers**: offline in `tests/test_usecases_unit.py` with the LLM monkeypatched
    at `genai.llm.llm_chat` (one test per rejection rule and the tagging rule), through the real
-   server in `tests/test_generic_ai_e2e.py`, and a live test with the gate that defines "good
+   server in `tests/test_ai_connector_e2e.py`, and a live test with the gate that defines "good
    enough" in `tests/test_llm_live.py`.
 6. **Benchmark it** if quality is a number (§7), and **document it**: USE-CASES, this guide's
    status table, `CHANGELOG.md`, and the settings table in
@@ -163,18 +200,18 @@ network path would have to be faked separately and would escape the `http(s)`-on
 .venv/bin/pytest -q                                          # offline layers; live layers skip
 MISP_VERIFY_SSL=false .venv/bin/pytest -q                    # dev MISP has a self-signed certificate
 MISP_VERIFY_SSL=false .venv/bin/pytest -q --require-live     # pre-tag: unavailable live systems FAIL
-.venv/bin/pytest -q tests/test_generic_ai_unit.py -k report  # one file, one keyword
+.venv/bin/pytest -q tests/test_ai_connector_unit.py -k report  # one file, one keyword
 MISP_VERIFY_SSL=false .venv/bin/pytest -q -s tests/test_llm_live.py --update-goldens   # re-record summaries
 E2E_SEED=42 MISP_VERIFY_SSL=false .venv/bin/pytest -q -s tests/test_e2e_roundtrip.py   # reproduce a draw
 ```
 
 | layer | file | needs | proves |
 |---|---|---|---|
-| unit | `test_generic_ai_unit.py`, `test_usecases_unit.py`, `test_suggest_unit.py`, `test_misp_compare.py`, … | nothing | handler contract, input shapes, every rejection rule, the tagging rule, refang/dates/metrics/benchmark tooling |
-| local e2e | `test_generic_ai_e2e.py` | `misp-modules` | the real server lists the module and round-trips every fixture through `/query` |
+| unit | `test_ai_connector_unit.py`, `test_usecases_unit.py`, `test_suggest_unit.py`, `test_misp_compare.py`, … | nothing | handler contract, input shapes, every rejection rule, the tagging rule, refang/dates/metrics/benchmark tooling |
+| local e2e | `test_ai_connector_e2e.py` | `misp-modules` | the real server lists the module and round-trips every fixture through `/query` |
 | live LLM (`-m live_llm`) | `test_llm_live.py` | `.env` + endpoint | determinism, the extraction precision gate, the summary structural gate, goldens |
 | live suggest (`-m live_suggest`) | `test_suggest_live.py` | the service | suggested tags exist on the MISP, the event is AI-tagged, abstention changes nothing |
-| live MISP (`-m live_misp`) | `test_generic_ai_e2e.py`, `test_e2e_roundtrip.py` | `.env` + MISP | fixture uuids still validate; the round-trip gate |
+| live MISP (`-m live_misp`) | `test_ai_connector_e2e.py`, `test_e2e_roundtrip.py` | `.env` + MISP | fixture uuids still validate; the round-trip gate |
 | live write path | `test_e2e_misp_write.py` | both | the module's output lands in MISP as sent — attributes, new report, tags — on an org-only, unpublished event that is deleted afterwards (`E2E_KEEP=1` keeps it) |
 
 Conventions:
@@ -290,8 +327,8 @@ live systems:
 set -a && source .env
 rsync -az --delete --exclude '.git' --exclude '.env' --exclude '.venv' --exclude '__pycache__' \
   --exclude '.pytest_cache' --exclude '.ruff_cache' \
-  ./ "${DEVELOPER_USER}@${DEVELOPER_HOST}:${DEVELOPER_HOST_DIRECTORY}/generic-ai-misp-module/"
-ssh "${DEVELOPER_USER}@${DEVELOPER_HOST}" 'export PATH="$HOME/.local/bin:$PATH" && cd "'"${DEVELOPER_HOST_DIRECTORY}"'/generic-ai-misp-module" && uv venv --python 3.14 .venv && uv pip install --python .venv/bin/python -e ".[dev,e2e]" && .venv/bin/pytest -q'
+  ./ "${DEVELOPER_USER}@${DEVELOPER_HOST}:${DEVELOPER_HOST_DIRECTORY}/ai-connector/"
+ssh "${DEVELOPER_USER}@${DEVELOPER_HOST}" 'export PATH="$HOME/.local/bin:$PATH" && cd "'"${DEVELOPER_HOST_DIRECTORY}"'/ai-connector" && uv venv --python 3.14 .venv && uv pip install --python .venv/bin/python -e ".[dev,e2e]" && .venv/bin/pytest -q'
 ```
 
 ## 10. Where the project stands
@@ -300,14 +337,14 @@ ssh "${DEVELOPER_USER}@${DEVELOPER_HOST}" 'export PATH="$HOME/.local/bin:$PATH" 
 
 | area | state |
 |---|---|
-| misp-modules contract, both request shapes, PyMISP validation, error handling | done |
+| MISP's `ai_connector` contract (feature/ai_tools): the five use-cases, `params` overrides, results shapes, error handling | done, gated offline (`tests/test_misp_contract_unit.py`) and live (`tests/test_e2e_misp_ai_actions.py`) |
 | round-trip guarantee (10 random live events, semantic comparison) | done, gated |
 | UC1 extraction — filters, refang, hash re-typing, dates, `to_ids` lowering, `file`/`vulnerability` objects, provenance | done, precision-gated |
 | UC2 summarization — `report` and `event` kinds, structural gate, determinism | done, gated |
 | UC3 tag suggestion via misp-tag-suggest, abstention handling | done, gated |
 | `ai-computer-assisted` tagging from a pinned list, checked against upstream | done |
 | prompts + sampling parameters as a MISP galaxy, provenance in the metadata | done |
-| config precedence, endpoint/key never from a request, timeout, no fallback | done |
+| settings precedence `params` > `.env` > default, unknown params refused, timeout, no fallback | done |
 | test layers incl. the live write path, explicit live gates (`--require-live`) | done |
 | benchmarks for all four measurable use-case variants, one-command round | done |
 | CI (ruff, pylint, offline pytest, semgrep) and a pre-commit hook | done |
@@ -316,7 +353,8 @@ ssh "${DEVELOPER_USER}@${DEVELOPER_HOST}" 'export PATH="$HOME/.local/bin:$PATH" 
 
 | item | gap | reference |
 |---|---|---|
-| `process_eventReport()` | still a dummy hook | `expansion/generic_ai.py` |
+| AI tags on the MISP side | MISP drops `results.Tag` for the summaries and shows them as optional suggestions for `tag_suggest`; issue text in `docs/misp-issues/` | `tests/test_e2e_misp_ai_actions.py` (xfail) |
+| `infoextraction` in MISP | no UI path on MISP's side yet; issue text with the spec in `docs/misp-issues/` | `docs/USE-CASES.md` |
 | gold data set | three hand-labelled reports carry every precision number | IMPROVEMENTS 32 |
 | correctness of LLM-only findings | filenames, actor and malware names are checked to be in the text, not to be indicators | IMPROVEMENTS 27 |
 | summary *meaning* | only structure, length and foreign indicators are checked | IMPROVEMENTS 28 |
@@ -330,7 +368,6 @@ ssh "${DEVELOPER_USER}@${DEVELOPER_HOST}" 'export PATH="$HOME/.local/bin:$PATH" 
 
 | item | what it means | reference |
 |---|---|---|
-| MISP UI integration | thin entry points per action (adapter for MISP's *Send to LLM* button, import module, workflow action) around one engine | INTEGRATION_PLAN.md |
 | galaxy clusters for actors and malware | emit `misp-galaxy:threat-actor="…"` instead of free-text attributes | IMPROVEMENTS 36 |
 | content tags only when stated | TLP, kill-chain and confidence tags only if literally in the report (the same rule dates already follow) | IMPROVEMENTS 34 |
 | `ObjectReference` links | drops / connects-to / exploits between extracted candidates | IMPROVEMENTS 35 |

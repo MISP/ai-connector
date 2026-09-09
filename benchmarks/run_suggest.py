@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks import misp_sample
-from expansion import generic_ai
+from expansion import ai_connector
 from genai import suggest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +46,7 @@ def run_one(raw: dict[str, Any], settings: suggest.SuggestSettings, k: int) -> d
     event_dict = copy.deepcopy(raw.get("Event", raw))
     gold = gold_tags(event_dict)
     event_dict["Tag"] = []  # the service ignores existing tags, but do not even send them
-    event = generic_ai.validate_event(event_dict)
+    event = ai_connector.validate_event(event_dict)
     started = time.perf_counter()
     result = suggest.suggest_tags(event, settings, limit=k)
     suggested = [s["tag"] for s in result["added"]]

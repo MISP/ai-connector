@@ -3,6 +3,36 @@ revision = 3
 requires-python = ">=3.14"
 
 [[package]]
+name = "ai-connector"
+version = "0.5.0"
+source = { editable = "." }
+dependencies = [
+    { name = "iocextract" },
+    { name = "pymisp" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pylint" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+e2e = [
+    { name = "misp-modules" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "iocextract", specifier = ">=1.16.1" },
+    { name = "misp-modules", marker = "extra == 'e2e'" },
+    { name = "pylint", marker = "extra == 'dev'" },
+    { name = "pymisp", specifier = ">=2.5.34.2" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "ruff", marker = "extra == 'dev'" },
+]
+provides-extras = ["dev", "e2e"]
+
+[[package]]
 name = "astroid"
 version = "4.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -168,36 +198,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/81/e1/56027a71e31b02ddc
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/77/dc8c558f7593132cf8fefec57c4f60c83b16941c574ac5f619abb3ae7933/dill-0.4.1-py3-none-any.whl", hash = "sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d", size = 120019, upload-time = "2026-01-19T02:36:55.663Z" },
 ]
-
-[[package]]
-name = "generic-ai-misp-module"
-version = "0.3.0"
-source = { editable = "." }
-dependencies = [
-    { name = "iocextract" },
-    { name = "pymisp" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pylint" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-e2e = [
-    { name = "misp-modules" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "iocextract", specifier = ">=1.16.1" },
-    { name = "misp-modules", marker = "extra == 'e2e'" },
-    { name = "pylint", marker = "extra == 'dev'" },
-    { name = "pymisp", specifier = ">=2.5.34.2" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'" },
-]
-provides-extras = ["dev", "e2e"]
 
 [[package]]
 name = "idna"

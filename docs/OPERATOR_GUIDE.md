@@ -1,6 +1,6 @@
 # Operator guide
 
-**Who this is for:** whoever installs, runs and keeps the generic AI MISP module alive next to a
+**Who this is for:** whoever installs, runs and keeps the ai_connector module alive next to a
 MISP instance. It goes from an empty directory to a running module, then to running it in
 production: what to configure, what you can measure, what the failures look like and what to do
 about them.
@@ -32,7 +32,7 @@ The module has one third-party runtime dependency, `pymisp`.
 ### 1.2 Install
 
 ```bash
-git clone https://github.com/ctitools/generic-ai-misp-module.git && cd generic-ai-misp-module
+git clone https://github.com/ctitools/ai-connector.git && cd ai-connector
 uv venv --python 3.14 .venv
 uv pip install --python .venv/bin/python -e ".[dev,e2e]"
 ```
@@ -70,8 +70,8 @@ chmod 600 .env
 | `OPENAI_BASE_URL` | the module | must end in the OpenAI-compatible root, e.g. `.../v1` |
 | `OPENAI_MODEL` | the module | must exist on that endpoint |
 | `OPENAI_API_KEY` | the module | empty for a local Ollama |
-| `GENERIC_AI_REQUEST_TIMEOUT` | the module | seconds per model call, default 120; see [4.4](#44-capacity-timing-and-timeouts) |
-| `GENERIC_AI_<SETTING>` | the module | default for any setting in [2.1](#21-settings) (e.g. `GENERIC_AI_USE_CASE`) |
+| `AI_CONNECTOR_REQUEST_TIMEOUT` | the module | seconds per model call, default 120; see [4.4](#44-capacity-timing-and-timeouts) |
+| `AI_CONNECTOR_<SETTING>` | the module | default for any setting in [2.1](#21-settings) (e.g. `AI_CONNECTOR_USE_CASE`) |
 | `MISP_TAG_SUGGEST_URL`, `MISP_TAG_SUGGEST_API_KEY` | the module (tag suggestion) | see part 3 |
 | `MISP_BASE_URL`, `MISP_API_KEY`, `MISP_VERIFY_SSL` | the **tests and benchmarks** only | the module itself never talks to MISP |
 
@@ -100,27 +100,28 @@ Expected: the settings with the API key masked, and `True`.
 `-c .` points misp-modules at this repository as its custom-module root; `-l` and `-p` are the
 listen address and port. Add `-d` for debug logging ([4.2](#42-logs-what-exists-and-where)).
 
-Under a supervisor — a minimal systemd unit for a checkout in `/opt/generic-ai-misp-module`
+Under a supervisor — a minimal systemd unit for a checkout in `/opt/ai-connector`
 (not shipped in this repository, adapt to your conventions):
 
 ```ini
 [Unit]
-Description=misp-modules with the generic AI MISP module
+Description=misp-modules with the ai_connector module
 After=network-online.target
 
 [Service]
 User=misp-modules
-WorkingDirectory=/opt/generic-ai-misp-module
-ExecStart=/opt/generic-ai-misp-module/.venv/bin/python -m misp_modules \
-          -c /opt/generic-ai-misp-module -l 127.0.0.1 -p 6666
+WorkingDirectory=/opt/ai-connector
+ExecStart=/opt/ai-connector/.venv/bin/python -m misp_modules \
+          -c /opt/ai-connector -l 127.0.0.1 -p 6666
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Bind to loopback unless something else needs the port: `/query` executes model calls for anyone
-who can reach it.
+Bind to the address MISP reaches you on (`Plugin.AI_services_url` / `_port` on the MISP side)
+and to nothing wider: `/query` executes model calls, with the endpoint and key the caller sends,
+for anyone who can reach it ([4.6](#46-security-posture)).
 
 ### 1.5 Verify
 
@@ -129,42 +130,50 @@ Swagger UI on `/openapi`.
 
 ```bash
 curl -s http://127.0.0.1:6666/healthcheck                                   # {"status":true}
-curl -s http://127.0.0.1:6666/modules | jq '.[] | select(.name=="generic_ai") | {name, meta: .meta.version}'
+curl -s http://127.0.0.1:6666/modules | jq '.[] | select(.name=="ai_connector") | {name, version: .meta.version, type: .meta["module-type"]}'
 ```
 
-**a) Pass-through** — no model involved; proves validation and the round trip:
+**a) Ping** — the endpoint and model from `.env` (or from `params`), no generation:
 
 ```bash
-jq -c '{module: "generic_ai", event: .}' fixtures/output/10a94632-a0a1-4062-a3a5-95fe321ae045.json \
-  | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
-  | jq '{uuid: .results.Event.Event.uuid, report: .event_report[:120]}'
+curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' \
+  --data '{"module": "ai_connector", "use_case": "ping", "params": {}}' | jq .results
 ```
 
-**b) Summarization** — a new, AI-tagged `EventReport` is appended to the event:
+**b) Summarise the event** — `results.EventReport` is the new report, `results.Tag` the AI tags:
 
 ```bash
-jq -c '{module: "generic_ai", use_case: "summarization", summary_kind: "report", event: .}' fixtures/summary/dummy-event.json \
+jq -c '{module: "ai_connector", use_case: "summarization_on_event", data: ., params: {}}' fixtures/summary/dummy-event.json \
   | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
-  | jq '{summary: .results.Event.Event.EventReport[-1].content, tags: [.results.Event.Event.Tag[].name], meta: .metadata}'
+  | jq '{report: .results.EventReport, tags: [.results.Tag[].name], meta: .metadata}'
 ```
 
-**c) CTI info extraction** — the shipped dummy event already contains every indicator its report
+**c) Summarise one report** — what MISP sends from a report page; the answer is the revised
+report with the `# AI summary` block on top of the original text:
+
+```bash
+jq -c '{module: "ai_connector", use_case: "summarization_on_eventReport", data: {EventReport: .Event.EventReport[0], Event: {uuid: .Event.uuid, info: .Event.info}}, params: {}}' fixtures/summary/dummy-event.json \
+  | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
+  | jq -r '.results.EventReport.content' | head -20
+```
+
+**d) CTI info extraction** — the shipped dummy event already contains every indicator its report
 mentions (all of them would be rejected as duplicates), so build an event from one of the
 orkl.eu reports in `tests/fixtures/orkl/`:
 
 ```bash
 jq -n --rawfile r tests/fixtures/orkl/40301ca4-fed9-4b59-95ba-b668eb8eb7aa.txt \
-  '{module: "generic_ai", use_case: "extraction", event: {Event: {info: "extraction walkthrough", EventReport: [{name: "report", content: $r}]}}}' \
+  '{module: "ai_connector", use_case: "infoextraction", data: {Event: {info: "extraction walkthrough", EventReport: [{name: "report", content: $r}]}}, params: {}}' \
   | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
-  | jq '{attributes: [.results.Event.Event.Attribute[] | {type, value, comment}], added: .metadata.added, rejected: [.metadata.rejected[] | .reason]}'
+  | jq '{attributes: [.results.Attribute[] | {type, value, comment}], added: .metadata.added, rejected: [.metadata.rejected[] | .reason]}'
 ```
 
-**d) Tag suggestion** — needs part 3 first:
+**e) Tag suggestion** — needs part 3 first:
 
 ```bash
-jq -c '{module: "generic_ai", use_case: "tag_suggestion", suggest_limit: 5, event: .}' fixtures/output/10a94632-a0a1-4062-a3a5-95fe321ae045.json \
+jq -c '{module: "ai_connector", use_case: "tag_suggest", data: ., params: {suggest_limit: 5}}' fixtures/output/10a94632-a0a1-4062-a3a5-95fe321ae045.json \
   | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
-  | jq '{tags: [.results.Event.Event.Tag[].name], added: .metadata.added, abstained: .metadata.abstained}'
+  | jq '{tags: [.results.Tag[].name], abstained: .metadata.abstained}'
 ```
 
 ### 1.6 Check the installation with the test suite
@@ -184,49 +193,54 @@ Details: [TESTING.md](TESTING.md).
 
 ### 2.1 Settings
 
-Every key below is a misp-modules `moduleconfig` entry — settable per MISP instance as
-`Plugin.Enrichment_generic_ai_<key>` — and, except `request_timeout`, also per request.
+MISP (branch `feature/ai_tools`) keeps the AI settings on its own *AI* tab (`Plugin.AI_*`) and
+sends them with every request as `params`. The module applies **`params` > `.env` > default**:
 
-| key | default | meaning |
-|---|---|---|
-| `use_case` | `none` | `none` (pass-through), `extraction`, `summarization`, `tag_suggestion` |
-| `summary_kind` | `report` | `report` (summarise the event report) or `event` (summarise the whole event) |
-| `min_confidence` | `0.9` | extraction: drop indicators the model is less sure about |
-| `suggest_limit` | `5` | tag suggestion: how many tags to ask for (1..10) |
-| `suggest_min_score` | `0.0` | tag suggestion: minimum vote score to accept |
-| `model_id` | `OPENAI_MODEL` | override the model for one call; must exist on the endpoint |
-| `prompt_extraction`, `prompt_summary_report`, `prompt_summary_event` | the bundled galaxy cluster | a cluster uuid, a cluster value, or inline prompt text |
-| `request_timeout` | `120` s | seconds per model call — **settings only, never from a request** |
+| `params` key (MISP setting `Plugin.AI_<key>`) | `.env` fallback | default | meaning |
+|---|---|---|---|
+| `openai_api_base` | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | the OpenAI-compatible endpoint |
+| `api_key` | `OPENAI_API_KEY` | none | its key, sent as a bearer token |
+| `model_id` | `OPENAI_MODEL` | none | must exist on the endpoint (`ping` checks) |
+| `temperature` | `AI_CONNECTOR_TEMPERATURE` | the prompt cluster's | sampling override for that call |
+| `request_timeout` | `AI_CONNECTOR_REQUEST_TIMEOUT` | `120` s | seconds per model / service call |
+| `suggest_limit` | `AI_CONNECTOR_SUGGEST_LIMIT` | `5` | tag suggestion: how many tags to ask for (1..10) |
+| `suggest_min_score` | `AI_CONNECTOR_SUGGEST_MIN_SCORE` | `0.0` | tag suggestion: minimum vote score |
 
-Precedence: **request body > module config > `.env` (`GENERIC_AI_<KEY>`) > built-in default.**
+Knobs MISP has no setting for, but scripts may send: `prompt` (a cluster uuid, a cluster value or
+inline prompt text), `min_confidence` (extraction, `0.9`), `seed`, `top_p`, `max_tokens`, `think`
+(sampling overrides; unset = the prompt cluster's values, [PROMPTS.md](PROMPTS.md)). Anything
+else in `params` is refused by name. The tag-suggestion service (`MISP_TAG_SUGGEST_URL`,
+`MISP_TAG_SUGGEST_API_KEY`) stays `.env`-only: MISP has no setting for it.
 
-`api_base` and `api_key` are deliberately **not** settable, from either place. They come from
-`.env` only, so no caller can point the module at another endpoint or read your key into a
-prompt.
-
-Sampling parameters (temperature, seed, top_p, max_tokens, think) are not settings: they travel
-with the prompt in its galaxy cluster, so a prompt is always paired with the parameters it was
-validated with ([PROMPTS.md](PROMPTS.md)).
+The remaining `Plugin.AI_*` settings (`services_enable`, `services_url`, `services_port`,
+`timeout`, `ssl_*`) describe how MISP reaches this server and never leave MISP.
 
 ### 2.2 How callers reach the module today
 
-`POST http://<host>:6666/query` on the misp-modules server, with the event in the body:
+**From MISP** (branch `feature/ai_tools`): enable the AI family on the *AI* settings tab —
+`Plugin.AI_services_enable = true`, `AI_services_url` / `AI_services_port` = this server — and
+the status card shows `ai_connector` listed with its version. Users whose role has
+`perm_ai_tools` then get *AI actions* in the event side menu (summarise event, recommend tags),
+a robot icon on every event report (summarise report) and the *Summarise report with AI*
+workflow node. MISP runs the summaries as background jobs; tag recommendations are previewed in
+a modal and attached only after the user ticks them. The request MISP posts:
 
 ```json
-{"module": "generic_ai", "use_case": "summarization", "summary_kind": "report",
- "event": {"Event": {"info": "...", "EventReport": [{"name": "...", "content": "..."}]}}}
+{"module": "ai_connector", "use_case": "summarization_on_event",
+ "data": {"Event": {...}}, "params": {"openai_api_base": "...", "api_key": "...", "model_id": "..."},
+ "timeout": 300}
 ```
 
-The event may also be sent as `{"data": [{"Event": {...}}]}` (the export-module shape), and the
-`{"Event": ...}` wrapper may be omitted.
+**From a script:** the same envelope, `POST http://<host>:6666/query`; `use_case` may also be
+`infoextraction` (no MISP button yet) or `ping`. The exact request and answer shapes are the
+table in the developer guide §3. A complete scripted round trip — create an event, run every
+use-case, write the results into MISP with PyMISP the way MISP's own models do, verify the tags
+on the instance — is `tests/test_e2e_misp_write.py`; the same through MISP's own AI actions is
+`tests/test_e2e_misp_ai_actions.py`.
 
-**MISP's own UI does not offer this module.** MISP selects expansion modules per attribute type
-and has no path that sends a whole event to one; its `/modules/queryEnrichment` proxy only
-forwards to modules that declare `hover`, which an LLM call must not. So today the callers are
-scripts, workflows you write, and the test suite. The researched plan for real UI integration is
-[INTEGRATION_PLAN.md](INTEGRATION_PLAN.md) (not started). A complete scripted round trip —
-create an event, run the use-cases, push the result back with PyMISP, verify the tags on the
-instance — exists as a test and is the worked example: `tests/test_e2e_misp_write.py`.
+**Known gaps on the MISP side** (issue texts in `docs/misp-issues/`): MISP
+attaches neither `results.Tag` of a summary nor the `ai-computer-assisted` tags a user did not
+tick, and `infoextraction` has no UI path.
 
 ---
 
@@ -327,7 +341,7 @@ above. Everything you see in a log comes from the processes around it:
 | source | where | what you get |
 |---|---|---|
 | misp-modules server | **stderr** of the process (`journalctl -u <unit>`, or your redirect) | `2026-09-05 12:00:00,000 - misp-modules - INFO - …`, one tornado access line per request with status and duration, warnings and full tracebacks |
-| misp-modules with `-d` | same | additionally `QueryModule generic_ai request <full payload>` — **the whole event, including the report text**. Useful for debugging, unsuitable for permanent production logging |
+| misp-modules with `-d` | same | additionally `QueryModule ai_connector request <full payload>` — **the whole event, including the report text**. Useful for debugging, unsuitable for permanent production logging |
 | the LLM server | its own log (`journalctl -u ollama`) | model load, per-request duration, out-of-memory and context problems |
 | misp-tag-suggest | its `logs/service.log` | uvicorn access log, index state |
 | MISP | its own logs | anything MISP does with the result — the module never writes to MISP |
@@ -343,7 +357,7 @@ both "was there an error" and "what did it do".
 
 ```bash
 curl -sf http://127.0.0.1:6666/healthcheck                                    # server alive
-curl -s http://127.0.0.1:6666/modules | jq -e '.[] | select(.name=="generic_ai")' >/dev/null   # module loaded
+curl -s http://127.0.0.1:6666/modules | jq -e '.[] | select(.name=="ai_connector")' >/dev/null   # module loaded
 .venv/bin/python -c "from genai import llm; s=llm.LLMSettings.from_env(); exit(0 if llm.is_reachable(s) else 1)"   # model reachable
 curl -sf http://127.0.0.1:8000/health | jq -e '.artifacts_ready'              # tag suggestion ready
 ```
@@ -370,13 +384,13 @@ Measured on the reference deployment (`qwen3.8`, 2× RTX 4090):
 Three timeouts stack, and they must be ordered correctly:
 
 1. **the model call** — module setting `request_timeout`, default **120 s**
-   (`GENERIC_AI_REQUEST_TIMEOUT` in `.env`);
+   (`AI_CONNECTOR_REQUEST_TIMEOUT` in `.env`);
 2. **the misp-modules server** — `timeout` in the request body, default **300 s**; on expiry the
-   server answers `{"error": "Timeout."}` and logs `Timeout on generic_ai`;
+   server answers `{"error": "Timeout."}` and logs `Timeout on ai_connector`;
 3. **your client**.
 
 Indicator-rich reports can need far more than 120 s (the benchmarks run with
-`GENERIC_AI_REQUEST_TIMEOUT=900`). If you raise the module timeout above 300 s, **also send
+`AI_CONNECTOR_REQUEST_TIMEOUT=900`). If you raise the module timeout above 300 s, **also send
 `"timeout": <seconds>` in the request body**, or the server will cut the call off first.
 
 Concurrency: the misp-modules server handles requests in a thread pool, but a single Ollama
@@ -396,7 +410,7 @@ tagged as AI-generated when no model ran.
 | `This module requires a MISP Event under "event" or "data".` | no event in the body | caller bug |
 | `unknown use_case …` / `unknown summary_kind …` | typo in a setting or request key | the message lists the allowed values |
 | `the event has no EventReport to extract from` / `nothing to summarise for kind='report'` | the event carries no (non-deleted) report | use `summary_kind: event`, or attach a report |
-| `LLM endpoint unreachable or timed out (Ns): …` | the model host is down, or the answer took longer than `request_timeout` | check the LLM server; raise `GENERIC_AI_REQUEST_TIMEOUT` (and the body `timeout`) for long reports |
+| `LLM endpoint unreachable or timed out (Ns): …` | the model host is down, or the answer took longer than `request_timeout` | check the LLM server; raise `AI_CONNECTOR_REQUEST_TIMEOUT` (and the body `timeout`) for long reports |
 | `LLM endpoint returned HTTP 404: …` | the model name does not exist on the endpoint | fix `OPENAI_MODEL` / `model_id` |
 | `LLM endpoint returned HTTP 401/403: …` | wrong or missing `OPENAI_API_KEY` | fix `.env` |
 | `LLM answer was truncated (max_tokens too small)` | the answer exceeded the prompt cluster's budget — expect this on the most indicator-rich reports (5 of 100 in the benchmark) | nothing to configure per request: the budget lives in the prompt cluster ([PROMPTS.md](PROMPTS.md)) |
@@ -412,8 +426,11 @@ tagged as AI-generated when no model ran.
 
 ### 4.6 Security posture
 
-- **Configuration is not caller-controlled.** `api_base` and `api_key` can never be set from a
-  request; only the keys in [2.1](#21-settings) can, and `request_timeout` not even from there.
+- **The caller chooses the endpoint.** MISP sends `openai_api_base`, `api_key` and
+  `model_id` with every request (its `Plugin.AI_*` settings), so whoever can POST to `/query`
+  can make this server talk to any http(s) endpoint with any key. Firewall the misp-modules
+  port to the MISP host; do not expose it. Every other `params` key is named and bounded
+  ([2.1](#21-settings)); unknown ones are refused.
 - **Outbound requests are restricted** to `http(s)` URLs from your own configuration; there is
   one HTTP function in the code and it refuses anything else.
 - **TLS verification is on** for the module's own calls. `MISP_VERIFY_SSL=false` affects tests

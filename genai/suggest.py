@@ -96,7 +96,7 @@ def suggest_tags(
     if added:  # event-level content: the event carries the AI tags (USE-CASES.md)
         prompts.tag_ai_generated(event)
     return {
-        "use_case": "tag_suggestion",
+        "use_case": "tag_suggest",
         "added": added,
         "skipped_existing": skipped,
         "below_min_score": below,
