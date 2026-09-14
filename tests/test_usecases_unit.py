@@ -85,6 +85,34 @@ def test_extraction_adds_tagged_attributes(event, fake_llm) -> None:
     assert event.event_reports[0].content.startswith("## Summary")  # source untouched
 
 
+def test_extraction_comment_cites_the_report_the_quote_came_from(event, fake_llm) -> None:
+    event.add_event_report("second report", "The C2 was hxxp://c2.evil[.]example/gate")
+    second = event.event_reports[-1].uuid
+    fake_llm(
+        json.dumps(
+            {
+                "indicators": [
+                    _candidate(
+                        "domain", "acme-bank-secure.example", "alerts@acme-bank-secure.example"
+                    ),
+                    _candidate(
+                        "url",
+                        "hxxp://c2.evil[.]example/gate",
+                        "C2 was hxxp://c2.evil[.]example/gate",
+                    ),
+                ]
+            }
+        )
+    )
+    metadata: dict = {}
+    ai_connector.process_event(event, settings={"use_case": "infoextraction"}, metadata=metadata)
+    by_value = {a.value: getattr(a, "comment", "") for a in event.attributes}
+    assert by_value["acme-bank-secure.example"].endswith(f"EventReport {REPORT_UUID}")
+    assert by_value["http://c2.evil.example/gate"].startswith(
+        f"extracted by ai_connector from EventReport {second}; defanged"
+    )
+
+
 @pytest.mark.parametrize(
     ("candidate", "reason"),
     [

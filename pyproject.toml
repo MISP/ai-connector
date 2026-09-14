@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-connector"
-version = "0.5.0"
+version = "0.6.0"
 description = "The MISP AI module (ai_connector): summaries, tag suggestions and CTI extraction for a MISP Event"
 readme = "README.md"
 requires-python = ">=3.14"

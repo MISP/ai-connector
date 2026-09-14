@@ -73,7 +73,7 @@ The contract is the one MISP's `Module::queryAI()` speaks (MISP `feature/ai_tool
 | `summarization_on_event` | `{"Event": {...}}` | `EventReport {name, content}` (a new report) + `Tag` (the two AI tags) |
 | `summarization_on_eventReport` | `{"EventReport": {...}, "Event": {...}}` (one report; a bare report dict works too) | `EventReport {name, content}` = the full revised report: `# AI summary`, the summary, a blank line, `==================`, the original text — MISP merges it in place + `Tag` |
 | `tag_suggest` | `{"Event": {...}}` | `Tag [{name, score}]` ≥ `suggest_min_score`, at most `suggest_limit`, plus the two AI tags when anything was suggested; `[]` on abstention |
-| `infoextraction` | `{"Event": {...}}` | `Event` (the processed event), `Attribute` and `Object` (what this run added, each AI-tagged) — no MISP UI path yet |
+| `infoextraction` | `{"Event": {...}}` (MISP sends only the non-deleted reports it wants extracted) | `Attribute` and `Object` (what this run added, MISP core format, each AI-tagged, `comment` citing the source report uuid) — MISP saves them through its import-module path; the processed event is only logged, at DEBUG (`misp-modules -d`) |
 | `ping` | none | `{ok, endpoint, model {name, server, digest}, latency_ms, models_listed, tag_suggest {url, reachable}}` |
 | any | | `{"error": "..."}` — one key, every validation problem named; never a partial result |
 
@@ -337,7 +337,7 @@ ssh "${DEVELOPER_USER}@${DEVELOPER_HOST}" 'export PATH="$HOME/.local/bin:$PATH" 
 
 | area | state |
 |---|---|
-| MISP's `ai_connector` contract (feature/ai_tools): the five use-cases, `params` overrides, results shapes, error handling | done, gated offline (`tests/test_misp_contract_unit.py`) and live (`tests/test_e2e_misp_ai_actions.py`) |
+| MISP's `ai_connector` contract (feature/ai_tools, 7de7581d): the five use-cases, `params` overrides, results shapes, error handling; MISP wires all five (four actions + *Test LLM*) and attaches the provenance tags | done, gated offline (`tests/test_misp_contract_unit.py`) and live (`tests/test_e2e_misp_ai_actions.py`) |
 | round-trip guarantee (10 random live events, semantic comparison) | done, gated |
 | UC1 extraction — filters, refang, hash re-typing, dates, `to_ids` lowering, `file`/`vulnerability` objects, provenance | done, precision-gated |
 | UC2 summarization — `report` and `event` kinds, structural gate, determinism | done, gated |
@@ -353,8 +353,6 @@ ssh "${DEVELOPER_USER}@${DEVELOPER_HOST}" 'export PATH="$HOME/.local/bin:$PATH" 
 
 | item | gap | reference |
 |---|---|---|
-| AI tags on the MISP side | MISP drops `results.Tag` for the summaries and shows them as optional suggestions for `tag_suggest`; issue text in `docs/misp-issues/` | `tests/test_e2e_misp_ai_actions.py` (xfail) |
-| `infoextraction` in MISP | no UI path on MISP's side yet; issue text with the spec in `docs/misp-issues/` | `docs/USE-CASES.md` |
 | gold data set | three hand-labelled reports carry every precision number | IMPROVEMENTS 32 |
 | correctness of LLM-only findings | filenames, actor and malware names are checked to be in the text, not to be indicators | IMPROVEMENTS 27 |
 | summary *meaning* | only structure, length and foreign indicators are checked | IMPROVEMENTS 28 |

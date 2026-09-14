@@ -10,6 +10,7 @@ The LLM and the tag-suggest service are faked; nothing here needs the network.
 # pylint: disable=redefined-outer-name,unused-argument
 
 import json
+import logging
 import re
 
 import pytest
@@ -173,7 +174,8 @@ def test_tag_suggest_abstention_is_an_empty_list(dummy_event, fake_suggest) -> N
     assert answer["results"] == {"Tag": []} and answer["metadata"]["abstained"] is True
 
 
-def test_infoextraction_answers_the_added_elements(dummy_event, fake_llm) -> None:
+def test_infoextraction_answers_the_added_elements(dummy_event, fake_llm, caplog) -> None:
+    caplog.set_level(logging.DEBUG, logger="misp-modules.ai_connector")  # misp-modules -d
     fake_llm(
         json.dumps(
             {
@@ -194,7 +196,14 @@ def test_infoextraction_answers_the_added_elements(dummy_event, fake_llm) -> Non
     assert attribute["value"] == "acme-bank-secure.example"
     assert {t["name"] for t in attribute["Tag"]} == AI_TAGS
     assert answer["results"]["Object"] == []
-    assert answer["results"]["Event"]["Event"]["uuid"] == dummy_event["Event"]["uuid"]
+    assert set(answer["results"]) == {
+        "Attribute",
+        "Object",
+    }  # what Event::aiExtractIndicators reads
+    report_uuid = dummy_event["Event"]["EventReport"][0]["uuid"]  # Event::aiExtractedReportUuids
+    assert attribute["comment"] == f"extracted by ai_connector from EventReport {report_uuid}"
+    (logged,) = [r for r in caplog.records if "processed event" in r.message]  # only in -d mode
+    assert dummy_event["Event"]["uuid"] in logged.message
 
 
 def test_ping_answers_endpoint_and_model(monkeypatch) -> None:

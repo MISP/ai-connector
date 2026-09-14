@@ -9,20 +9,21 @@ One request shape, the one MISP's Module::queryAI() sends to POST /query:
     data       {"Event": {...}}                                   (event use-cases)
                {"EventReport": {...}, "Event": {...}}             (summarization_on_eventReport)
     params     openai_api_base, api_key, model_id, temperature, request_timeout,
-               suggest_limit, suggest_min_score (what MISP sends) plus prompt, min_confidence,
+               suggest_limit, suggest_min_score, min_confidence (what MISP sends) plus prompt,
                seed, top_p, max_tokens, think. Unknown keys are an error.
 
 Data flow (docs/DEVELOPER_GUIDE.md §3):
 
     request -> resolve_settings(params) -> _extract_data -> validate_event (PyMISP)
         -> process_event(event, settings, metadata) -> results per use-case
-        -> {"results": {"EventReport"|"Tag"|"Event"|"Attribute"|"Object"|ping}, "metadata"}
+        -> {"results": {"EventReport"|"Tag"|"Attribute"|"Object"|ping}, "metadata"}
         or {"error": "..."}
 """
 
 import copy
 import dataclasses
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,7 +49,7 @@ mispattributes = {
     "format": "misp_standard",
 }
 moduleinfo = {
-    "version": "0.5",
+    "version": "0.6",
     "author": "Aaron Kaplan / ctitools",
     "description": "MISP AI connector: summaries, tag suggestions and CTI extraction for an event.",
     "module-type": ["ai"],
@@ -111,6 +112,7 @@ AI_SUMMARY_DELINEATOR = "=================="
 
 # process_event(..., e2etest=True) writes the processed event here as <uuid>.json
 E2E_DIR = REPO_ROOT / "tests" / "e2etests"
+LOG = logging.getLogger("misp-modules.ai_connector")  # DEBUG when misp-modules runs with -d
 
 
 def _coerce(key: str, value: Any) -> Any:
@@ -302,8 +304,9 @@ def _results(use_case: str, event: MISPEvent, result: dict, before: set[str]) ->
         suggested = [{"name": s["tag"], "score": s["score"]} for s in result["added"]]
         return {"Tag": suggested + (ai_tags if suggested else [])}
     added = [i for i in (*event.attributes, *event.objects) if i.uuid not in before]
+    if LOG.isEnabledFor(logging.DEBUG):  # MISP ignores the processed event; log it in -d mode
+        LOG.debug("infoextraction processed event %s: %s", event.uuid, event.to_json())
     return {
-        "Event": _to_dict(event),
         "Attribute": [json.loads(a.to_json()) for a in added if a in event.attributes],
         "Object": [json.loads(o.to_json()) for o in added if o in event.objects],
     }

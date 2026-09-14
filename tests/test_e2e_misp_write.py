@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import PROJECT_ROOT, load_env
-from pymisp import MISPEvent, MISPEventReport, PyMISP
+from pymisp import MISPAttribute, MISPEvent, MISPEventReport, MISPObject, PyMISP
 
 from expansion import ai_connector
 from genai import prompts
@@ -77,14 +77,18 @@ def _stored(misp_write: PyMISP, uuid: str) -> dict:
     return misp_write.get_event(uuid, pythonify=False)["Event"]
 
 
-def _push_event(misp_write: PyMISP, results: dict) -> None:
-    """What a script does with results.Event (MISP itself has no path for infoextraction yet)."""
-    processed = MISPEvent()
-    processed.load(copy.deepcopy(results["Event"]))  # load() mutates its input
-    processed.distribution = YOUR_ORG_ONLY
-    processed.published = False
-    result = misp_write.update_event(processed, pythonify=False)
-    assert not result.get("errors"), result
+def _push_extraction(misp_write: PyMISP, uuid: str, results: dict) -> None:
+    """What Event::aiApplyExtraction() does with results.Attribute / results.Object."""
+    for raw in results["Attribute"]:
+        attribute = MISPAttribute()
+        attribute.from_dict(**copy.deepcopy(raw))  # from_dict() mutates its input
+        result = misp_write.add_attribute(uuid, attribute, pythonify=False)
+        assert not result.get("errors"), result
+    for raw in results["Object"]:
+        misp_object = MISPObject(raw["name"])
+        misp_object.from_dict(**copy.deepcopy(raw))
+        result = misp_write.add_object(uuid, misp_object, pythonify=False)
+        assert not result.get("errors"), result
 
 
 def _push_tags(misp_write: PyMISP, uuid: str, results: dict) -> None:
@@ -100,7 +104,8 @@ def _tags(element: dict) -> set[str]:
 @pytest.mark.parametrize("created_event", REPORTS, indirect=True, ids=[p.stem[:8] for p in REPORTS])
 def test_extraction_lands_in_misp(misp_write, llm_settings, created_event) -> None:
     results = _call(misp_write, created_event, "infoextraction")
-    _push_event(misp_write, results)
+    assert set(results) == {"Attribute", "Object"}  # MISP reads exactly these
+    _push_extraction(misp_write, created_event, results)
     after = _stored(misp_write, created_event)
     attributes = list(after["Attribute"]) + [a for o in after["Object"] for a in o["Attribute"]]
     added = [a for a in attributes if a.get("comment", "").startswith("extracted by ai_connector")]

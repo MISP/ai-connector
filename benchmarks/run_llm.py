@@ -97,7 +97,7 @@ def run_one(
     meta = response["metadata"]
     result = {"model": meta["model"], "prompt": meta["prompt"], "seconds": seconds}
     if use_case == "extraction":
-        processed = response["results"]["Event"]["Event"]
+        processed = response["results"]  # {Attribute, Object}: what this run added
         return result | {
             "indicators": indicators(processed),
             "rejected": meta["rejected"],

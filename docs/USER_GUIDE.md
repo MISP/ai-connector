@@ -178,10 +178,10 @@ How to read that honestly:
 ## What it does not do
 
 - **The buttons exist only on MISP's `feature/ai_tools` branch** (*AI actions* in the event
-  menu, the robot icon on a report, the workflow node), and only for roles with *AI tools*.
-  Extraction has no button there yet; it is called by script or API. On that branch MISP also
-  does not yet attach the `ai-computer-assisted` tags the module returns for summaries; both
-  gaps are written up for the MISP project in `docs/misp-issues/`.
+  menu — summarise, recommend tags, extract indicators —, the robot icon on a report, the two
+  workflow nodes), and only for roles with *AI tools*. Extracted indicators are shown for
+  review before anything is saved; MISP attaches the `ai-computer-assisted` tags the module
+  returns.
 - **It does not decide anything.** Everything it adds is `unreviewed` by construction; moving a
   review level is an analyst action in MISP.
 - **It does not infer.** No attribution, no kill-chain phase, no TLP unless the report states it

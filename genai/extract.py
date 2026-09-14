@@ -174,13 +174,31 @@ def _category(candidate: dict[str, Any]) -> str:
     return str(DESCRIBE_TYPES["sane_defaults"][kind]["default_category"])
 
 
-def _add(event: MISPEvent, accepted: list[dict[str, Any]], comment: str) -> int:
+def source_report(candidate: dict[str, Any], reports: list[tuple[str, str]]) -> str:
+    """The uuid of the report the candidate's quote (else its value) is in, the first report
+    when none matches; `reports` are (uuid, normalised refanged content). MISP reads the uuid
+    from the comment to remember which reports were already extracted."""
+    for needle in (candidate.get("quote"), candidate.get("value")):
+        needle = normalise(refang(str(needle or "")))
+        if needle:
+            for uuid, text in reports:
+                if needle in text:
+                    return uuid
+    return reports[0][0] if reports else ""
+
+
+def _add(event: MISPEvent, accepted: list[dict[str, Any]]) -> int:
     """Add accepted candidates: CVEs as vulnerability objects, filename+hash pairs sharing a
     quote as file objects, everything else as plain attributes. Returns the object count."""
     objects = 0
 
+    def comment(candidate: dict[str, Any]) -> str:
+        return f"{COMMENT} {candidate['_report']}"
+
     def note(candidate: dict[str, Any]) -> str:
-        return comment + (f"; {candidate['_provenance']}" if "_provenance" in candidate else "")
+        return comment(candidate) + (
+            f"; {candidate['_provenance']}" if "_provenance" in candidate else ""
+        )
 
     def fields(candidate: dict[str, Any]) -> dict[str, Any]:
         actionable = to_ids(candidate)  # may add a provenance note, so before the comment
@@ -194,7 +212,7 @@ def _add(event: MISPEvent, accepted: list[dict[str, Any]], comment: str) -> int:
         types = {c["type"] for c in group}
         if "filename" in types and types & set(HASH_TYPES):
             misp_object = MISPObject("file")
-            misp_object.comment = comment
+            misp_object.comment = comment(group[0])
             for candidate in group:
                 if candidate["type"] in ("filename", *HASH_TYPES):
                     attribute = misp_object.add_attribute(
@@ -207,7 +225,7 @@ def _add(event: MISPEvent, accepted: list[dict[str, Any]], comment: str) -> int:
         for candidate in group:
             if candidate["type"] == "vulnerability":
                 misp_object = MISPObject("vulnerability")
-                misp_object.comment = comment
+                misp_object.comment = comment(candidate)
                 attribute = misp_object.add_attribute(
                     "id", value=candidate["value"], **fields(candidate)
                 )
@@ -255,10 +273,14 @@ def extract_iocs(  # filters, counts and provenance in one pass; pylint: disable
         dates_unparsed += normalise_dates(candidate, source)
         existing.add((candidate["type"], normalise(candidate["value"])))
         accepted.append(candidate)
-    report_uuids = ", ".join(
-        r.uuid for r in event.event_reports if not getattr(r, "deleted", False)
-    )
-    objects = _add(event, accepted, f"{COMMENT} {report_uuids}")
+    reports = [
+        (r.uuid, normalise(refang(r.content)))
+        for r in event.event_reports
+        if r.content and not getattr(r, "deleted", False)
+    ]
+    for candidate in accepted:
+        candidate["_report"] = source_report(candidate, reports)
+    objects = _add(event, accepted)
     return {
         "use_case": "infoextraction",
         "added": len(accepted),

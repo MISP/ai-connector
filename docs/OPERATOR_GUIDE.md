@@ -205,9 +205,10 @@ sends them with every request as `params`. The module applies **`params` > `.env
 | `request_timeout` | `AI_CONNECTOR_REQUEST_TIMEOUT` | `120` s | seconds per model / service call |
 | `suggest_limit` | `AI_CONNECTOR_SUGGEST_LIMIT` | `5` | tag suggestion: how many tags to ask for (1..10) |
 | `suggest_min_score` | `AI_CONNECTOR_SUGGEST_MIN_SCORE` | `0.0` | tag suggestion: minimum vote score |
+| `min_confidence` | `AI_CONNECTOR_MIN_CONFIDENCE` | `0.9` | extraction: candidates below it are dropped (0..1) |
 
 Knobs MISP has no setting for, but scripts may send: `prompt` (a cluster uuid, a cluster value or
-inline prompt text), `min_confidence` (extraction, `0.9`), `seed`, `top_p`, `max_tokens`, `think`
+inline prompt text), `seed`, `top_p`, `max_tokens`, `think`
 (sampling overrides; unset = the prompt cluster's values, [PROMPTS.md](PROMPTS.md)). Anything
 else in `params` is refused by name. The tag-suggestion service (`MISP_TAG_SUGGEST_URL`,
 `MISP_TAG_SUGGEST_API_KEY`) stays `.env`-only: MISP has no setting for it.
@@ -219,11 +220,14 @@ The remaining `Plugin.AI_*` settings (`services_enable`, `services_url`, `servic
 
 **From MISP** (branch `feature/ai_tools`): enable the AI family on the *AI* settings tab —
 `Plugin.AI_services_enable = true`, `AI_services_url` / `AI_services_port` = this server — and
-the status card shows `ai_connector` listed with its version. Users whose role has
-`perm_ai_tools` then get *AI actions* in the event side menu (summarise event, recommend tags),
-a robot icon on every event report (summarise report) and the *Summarise report with AI*
-workflow node. MISP runs the summaries as background jobs; tag recommendations are previewed in
-a modal and attached only after the user ticks them. The request MISP posts:
+the status card shows `ai_connector` listed with its version; its *Test LLM* button is the
+`ping` use-case. Users whose role has `perm_ai_tools` then get *AI actions* in the event side
+menu (summarise event, recommend tags, extract indicators), a robot icon on every event report
+(summarise report, extract from that report) and two workflow nodes (*Summarise report with
+AI*, *Extract indicators with AI*). Summaries and REST extractions run as background jobs; tag
+recommendations and browser extractions are previewed and saved only after the user's
+selection. MISP attaches the `ai-computer-assisted` tags the module returns: on the event for
+summaries and accepted tag suggestions, per attribute for extractions. The request MISP posts:
 
 ```json
 {"module": "ai_connector", "use_case": "summarization_on_event",
@@ -231,16 +235,11 @@ a modal and attached only after the user ticks them. The request MISP posts:
  "timeout": 300}
 ```
 
-**From a script:** the same envelope, `POST http://<host>:6666/query`; `use_case` may also be
-`infoextraction` (no MISP button yet) or `ping`. The exact request and answer shapes are the
-table in the developer guide §3. A complete scripted round trip — create an event, run every
-use-case, write the results into MISP with PyMISP the way MISP's own models do, verify the tags
-on the instance — is `tests/test_e2e_misp_write.py`; the same through MISP's own AI actions is
-`tests/test_e2e_misp_ai_actions.py`.
-
-**Known gaps on the MISP side** (issue texts in `docs/misp-issues/`): MISP
-attaches neither `results.Tag` of a summary nor the `ai-computer-assisted` tags a user did not
-tick, and `infoextraction` has no UI path.
+**From a script:** the same envelope, `POST http://<host>:6666/query`. The exact request and
+answer shapes are the table in the developer guide §3. A complete scripted round trip — create
+an event, run every use-case, write the results into MISP with PyMISP the way MISP's own models
+do, verify the tags on the instance — is `tests/test_e2e_misp_write.py`; the same through MISP's
+own AI actions is `tests/test_e2e_misp_ai_actions.py`.
 
 ---
 

@@ -88,7 +88,10 @@ request instead of being reported as a rejection.
 If the model output is not valid JSON, the request fails with an error — never partial results.
 
 Each added attribute carries the two AI tags and
-`comment = "extracted by ai_connector from EventReport <uuid>"`.
+`comment = "extracted by ai_connector from EventReport <uuid>"`, the uuid of the report its
+`quote` (else its value) was found in. MISP reads that uuid back to skip already-extracted
+reports in the workflow node. The answer is `results.Attribute` / `results.Object`: only what
+this run added, in MISP core format.
 
 ## UC2 — Summarization
 
@@ -151,12 +154,12 @@ the LLM (`genai.llm.http_json`); tests fake it.
 `results = {ok, endpoint, model {name, server, digest, quantization}, latency_ms, models_listed,
 tag_suggest {url, reachable}}` after one `GET /models` on the endpoint (the model must be
 listed) and one `/health` on the tag-suggestion service; no generation. An unreachable endpoint
-or an unlisted model is `{"error": …}`. Meant for MISP's *Test LLM* button on the AI settings
-tab (reserved on MISP's side, not wired yet).
+or an unlisted model is `{"error": …}`. This is MISP's *Test LLM* button on the AI settings
+tab (`POST /servers/aiDryRun {"use_case": "ping"}`).
 
 ## Configuration
 
-Every knob is a `params` key of the request; MISP fills the first seven from its `Plugin.AI_*`
+Every knob is a `params` key of the request; MISP fills eight of them from its `Plugin.AI_*`
 settings. Precedence: **`params` > `.env` > built-in default**; an unknown key or a value of
 the wrong type is an error. The full table with the `.env` names is
 [OPERATOR_GUIDE.md 2.1](OPERATOR_GUIDE.md#21-settings).

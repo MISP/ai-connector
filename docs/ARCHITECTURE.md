@@ -20,7 +20,7 @@ MISP (Module::queryAI) ──POST /query──▶ misp-modules ──handler(jso
                                                                           │
                                                                      _results()
                                                                           ▼
-       {"results": {"EventReport": {name, content}} | {"Tag": [{name}]} | {"Event", "Attribute", "Object"}, "metadata": …}
+       {"results": {"EventReport": {name, content}} | {"Tag": [{name}]} | {"Attribute", "Object"}, "metadata": …}
 ```
 
 `process_event()` dispatches on `use_case` (`summarization_on_event`, `summarization_on_eventReport`,

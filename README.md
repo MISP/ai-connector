@@ -94,9 +94,9 @@ current numbers in [docs/BENCHMARKS.md](docs/BENCHMARKS.md), the full picture of
 partial and planned in
 [docs/DEVELOPER_GUIDE.md §10](docs/DEVELOPER_GUIDE.md#10-where-the-project-stands).
 
-Not there yet: MISP's buttons live on its `feature/ai_tools` branch only; that branch has no
-button for extraction and does not attach the `ai-computer-assisted` tags the module returns
-for summaries (issue texts for the MISP project in `docs/misp-issues/`).
+Not there yet: MISP's buttons live on its `feature/ai_tools` branch only. That branch wires
+all five use-cases (summarise event / report, recommend tags, extract indicators, *Test LLM*)
+and attaches the `ai-computer-assisted` tags the module returns.
 
 - module name `ai_connector` · module type `ai` · input: `use_case` + `data` (a MISP Event, or
   one EventReport with its event) + `params` · output: `results.EventReport`, `results.Tag`,
