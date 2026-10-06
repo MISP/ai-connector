@@ -6,6 +6,7 @@
 - `tests/test_prompt_cards_unit.py`: the enum equals the module's `USE_CASES`, the example names this schema, every example card equals its shipped cluster (prompt, version, parameters, sha256); full schema validation skips without `jsonschema`. Verified once with jsonschema 3.0.2: the example validates, six broken variants are rejected.
 - **CI runs the full schema check**: the pytest job in `checks.yml` installs `jsonschema` 4.26.0 and its four dependencies with `uv pip install --require-hashes -r .github/schema-requirements.txt` (CI only, not in `pyproject.toml`). Versions = misp-tag-suggest's `.venv`, no GitHub/PyPI advisories; pinned because a floating install would pull `rpds-py` 2026.9.1, published 2026-10-04. Not `uv run --with`: it ignores hashes (a corrupted hash installed fine, `uv pip install --require-hashes` rejected it). Rehearsed in a throwaway env: the schema test runs instead of skipping, offline suite 202 passed, 31 skipped.
 - Docs: PROMPTS.md "Sharing prompts with scores: prompt cards", DEVELOPER_GUIDE code map.
+- `uv.lock` refreshed: it still recorded `ai-connector` 0.5.0 while `pyproject.toml` is 0.6.0 since 2026-09-14, so every `uv sync` (also in CI) re-locked silently. Only that line changes; `uv lock --check` passes.
 
 ## 2026-09-14 (aligned with MISP feature/ai_tools 7de7581d: all five use-cases wired)
 
