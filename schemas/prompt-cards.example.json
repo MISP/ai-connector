@@ -1,0 +1,189 @@
+{
+  "metadata": {
+    "schema_version": "0.1.0",
+    "schema_url": "https://raw.githubusercontent.com/MISP/ai-connector/main/schemas/prompt-cards.schema.json",
+    "uuid": "5dc78aad-faba-4b58-bc9e-ca5550c97792",
+    "name": "ai_connector prompts for Qwen3.8-27B",
+    "description": "The prompts the ai_connector MISP module ships for its LLM use-cases, with the scores of benchmark round v4 (2026-09-05). tag_suggest has no LLM prompt (it uses the misp-tag-suggest embedding service), so it has no card.",
+    "version": 1,
+    "date_published": "2026-10-06T12:00:00Z",
+    "authors": [
+      "Aaron Kaplan",
+      "CIRCL"
+    ],
+    "license": "AGPL-3.0-only",
+    "source": "https://github.com/MISP/ai-connector",
+    "tags": [
+      "tlp:clear"
+    ]
+  },
+  "prompts": [
+    {
+      "uuid": "7b4e32ca-db05-46ae-ba95-4c0b4ee7d4c3",
+      "name": "cti-info-extraction/qwen3.8-v1",
+      "description": "Extract high-confidence MISP attributes from an EventReport",
+      "use_case": "infoextraction",
+      "version": 3,
+      "language": "en",
+      "prompt": "You extract indicators of compromise from a cyber threat intelligence report for MISP.\nOnly return indicators that appear LITERALLY in the report text. Never infer, complete or\nnormalise a value. If unsure, leave it out: precision matters more than recall. Benign\nreferences (the reporting organisation's own website, documentation links) are not indicators.\n\nAllowed \"type\" values are MISP attribute types, e.g. ip-src, ip-dst, domain, hostname, url,\nmd5, sha1, sha256, filename, email-src, email-dst, vulnerability, regkey, mutex, user-agent,\nja3-fingerprint-md5, AS, btc, threat-actor, malware-type. The complete list follows:\n{{misp_types}}\n\nReturn ONLY a JSON object, no prose, following this schema:\n{\"published\": \"<the report's publication date exactly as written, or null>\",\n \"indicators\": [{\"type\": \"<misp type>\", \"category\": \"<misp category>\", \"value\": \"<exact text>\",\n  \"confidence\": <0..1>, \"quote\": \"<the sentence fragment containing the value>\",\n  \"actionable\": <true|false>,\n  \"first_seen\": \"<a date exactly as written in the report for this indicator, or null>\",\n  \"last_seen\": \"<a date exactly as written in the report for this indicator, or null>\"}]}\nSet confidence below 0.9 for anything you are not certain about.\n\"actionable\" is false for the reporting organisation's own infrastructure, legitimate tools and\nbenign filenames mentioned only as context; true for indicators a defender should detect on.\nDates: copy the spelling from the report character for character (\"12 March 2026\",\n\"2026-03-12\"); use null when the report does not state a date for that indicator. Never\ncompute or guess a date.\n\nReport:\n{{input}}",
+      "prompt_sha256": "f25563e3df2eb6cf00ff93202af01fa5a344515236d866d553eff64348c98da2",
+      "model_id": "Qwen/Qwen3.8-27B",
+      "model_details": {
+        "quantization": "Q4_K_M",
+        "digest": "22130167c4c2",
+        "inference_server": "ollama 0.33.2",
+        "served_as": "qwen3.8:latest"
+      },
+      "model_parameters": {
+        "temperature": 0,
+        "seed": 42,
+        "top_p": 1,
+        "max_tokens": 10000,
+        "think": false
+      },
+      "benchmarks": [
+        {
+          "name": "ai_connector extraction, gold view",
+          "url": "https://github.com/MISP/ai-connector/blob/main/docs/BENCHMARKS_extraction.md",
+          "dataset": "3 hand-labelled reports (2 MISP EventReports, 1 orkl.eu report)",
+          "sample_size": 3,
+          "date": "2026-09-05",
+          "scores": {
+            "precision": 1.0,
+            "recall": 0.92,
+            "f1": 0.96,
+            "cohen_kappa": 0.93
+          },
+          "notes": "Indicators matched by refanged value; types ignored."
+        },
+        {
+          "name": "ai_connector extraction, orkl.eu",
+          "url": "https://github.com/MISP/ai-connector/blob/main/docs/BENCHMARKS_extraction.md",
+          "dataset": "100 random orkl.eu reports, seeded draw (seed 42)",
+          "sample_size": 100,
+          "date": "2026-09-05",
+          "scores": {
+            "success_rate": 0.95,
+            "f1_vs_regex_superset": 0.56
+          },
+          "notes": "5 reports overflow the 10000-token answer budget. The regex baseline (iocextract) is a deliberate superset, so F1 against it understates the model's precision."
+        }
+      ]
+    },
+    {
+      "uuid": "5c2d9e4f-8a1b-4c6d-9e0f-1a2b3c4d5e6f",
+      "name": "summary-report/qwen3.8-v2",
+      "description": "Analyst assessment of an EventReport (default since 2026-09-05): hard word budget, copy-exact indicators, no preamble",
+      "use_case": "summarization_on_eventReport",
+      "version": 2,
+      "language": "en",
+      "prompt": "You are a CTI analyst writing an analyst assessment of the following report for a MISP event.\nRules (the output is rejected by software if a rule is broken):\n1. English, at most 150 words in total. Short sentences, no filler, no repetition of the headings' meaning.\n2. Output exactly these four markdown headings in this order and nothing before, between or after them:\n## Threat\n## Targets\n## Indicators\n## Recommended actions\n3. Use only facts stated in the report. Never add indicators, names, dates or numbers that are not in it.\n4. Under \"## Indicators\": at most 5 of the most important indicators, each copied character for character\n   from the report (never shorten, complete or refang a hash, IP, domain or URL); if the report has more,\n   end the section with \"and N more in the report\". Do not list the reporting organisation's own links.\n5. If a section has no information, write \"Not stated in the report.\"\n\nReport:\n{{input}}",
+      "prompt_sha256": "702a911fb51766663251ce3bd008f0e8eb8e07d112f1189a0290d87c4bd4dc7d",
+      "model_id": "Qwen/Qwen3.8-27B",
+      "model_details": {
+        "quantization": "Q4_K_M",
+        "digest": "22130167c4c2",
+        "inference_server": "ollama 0.33.2",
+        "served_as": "qwen3.8:latest"
+      },
+      "model_parameters": {
+        "temperature": 0,
+        "seed": 42,
+        "top_p": 1,
+        "max_tokens": 1000,
+        "think": false
+      },
+      "benchmarks": [
+        {
+          "name": "ai_connector summarization, report kind",
+          "url": "https://github.com/MISP/ai-connector/blob/main/docs/BENCHMARKS_summary.md",
+          "dataset": "100 random orkl.eu reports, seeded draw (seed 42)",
+          "sample_size": 100,
+          "date": "2026-09-05",
+          "scores": {
+            "gate_pass_rate": 0.98,
+            "deterministic_rate": 1.0,
+            "indicator_coverage_mean": 0.32
+          },
+          "notes": "gate_pass_rate = share of answers passing the module's structural check (headings, word budget, every indicator copied from the input); deterministic_rate = byte-identical answers in a second pass over the passing items. There are no reference summaries: this measures form and indicator faithfulness, not content quality."
+        }
+      ]
+    },
+    {
+      "uuid": "0b8b4d38-4d38-48eb-be21-f42ad010281e",
+      "name": "summary-report/qwen3.8-v1",
+      "description": "Analyst assessment of an EventReport, v1 (superseded by v2: 28/100 orkl reports passed the gate)",
+      "use_case": "summarization_on_eventReport",
+      "version": 1,
+      "language": "en",
+      "prompt": "You are a CTI analyst writing an analyst assessment of the following report for a MISP event.\nWrite in English, at most 200 words, using exactly these markdown headings:\n## Threat\n## Targets\n## Indicators\n## Recommended actions\nUse only facts stated in the report. Do not add indicators, names or dates that are not in the\nreport. If a section has no information, write \"Not stated in the report.\"\n\nReport:\n{{input}}",
+      "prompt_sha256": "22dc0a98abda8ed8cd1977ea2c1a4f1e910e0fa26a645414768a31002bd2fff1",
+      "model_id": "Qwen/Qwen3.8-27B",
+      "model_details": {
+        "quantization": "Q4_K_M",
+        "digest": "22130167c4c2",
+        "inference_server": "ollama 0.33.2",
+        "served_as": "qwen3.8:latest"
+      },
+      "model_parameters": {
+        "temperature": 0,
+        "seed": 42,
+        "top_p": 1,
+        "max_tokens": 600,
+        "think": false
+      },
+      "benchmarks": [
+        {
+          "name": "ai_connector summarization, report kind",
+          "url": "https://github.com/MISP/ai-connector/blob/main/docs/BENCHMARKS.md",
+          "dataset": "100 random orkl.eu reports, seeded draw (seed 42)",
+          "sample_size": 100,
+          "date": "2026-09-05",
+          "scores": {
+            "gate_pass_rate": 0.28
+          },
+          "notes": "First run: most answers overshot the word budget or were cut at 600 tokens. Superseded by summary-report/qwen3.8-v2 on the same benchmark."
+        }
+      ]
+    },
+    {
+      "uuid": "9b7e1c3d-2f4a-4b8c-a6d5-0e1f2a3b4c5d",
+      "name": "summary-event/qwen3.8-v2",
+      "description": "Story-telling summary of a whole MISP event (default since 2026-09-05): hard word budget, copy-exact indicators and uuids, capped lists, no preamble",
+      "use_case": "summarization_on_event",
+      "version": 2,
+      "language": "en",
+      "prompt": "You are a CTI analyst summarising a MISP event for a manager. Below is a structured rendering\nof the event: its attributes, objects, tags, galaxies and related events.\nRules (the output is rejected by software if a rule is broken):\n1. English, at most 150 words in total. Short sentences, no filler.\n2. Output exactly these four markdown headings in this order and nothing before, between or after them:\n## What happened\n## Key indicators\n## Context and attribution\n## Related events\n3. Use only the information below. Never invent indicators, names, dates or numbers.\n4. Under \"## Key indicators\": at most 5 of the most important indicators, each copied character for\n   character from the rendering (never shorten a hash, IP, domain, URL or uuid); if there are more,\n   end the section with \"and N more in the event\".\n5. Under \"## Related events\": at most 5 related events, each referred to by its uuid exactly as\n   given with its info text; if there are more, end the section with \"and N more related events\".\n   Refer to objects by their uuid exactly as given.\n6. If a section has no information, write \"Not present in the event.\"\n\nEvent:\n{{input}}",
+      "prompt_sha256": "7194f5dff1341991f59bd1caa2926bf82ed8d115868e04cf8da1ec4a5280cda4",
+      "model_id": "Qwen/Qwen3.8-27B",
+      "model_details": {
+        "quantization": "Q4_K_M",
+        "digest": "22130167c4c2",
+        "inference_server": "ollama 0.33.2",
+        "served_as": "qwen3.8:latest"
+      },
+      "model_parameters": {
+        "temperature": 0,
+        "seed": 42,
+        "top_p": 1,
+        "max_tokens": 1000,
+        "think": false
+      },
+      "benchmarks": [
+        {
+          "name": "ai_connector summarization, event kind",
+          "url": "https://github.com/MISP/ai-connector/blob/main/docs/BENCHMARKS_summary-event.md",
+          "dataset": "100 random events with 5-300 attributes from a MISP instance, seeded draw (seed 42)",
+          "sample_size": 100,
+          "date": "2026-09-05",
+          "scores": {
+            "gate_pass_rate": 0.99,
+            "deterministic_rate": 0.98,
+            "indicator_coverage_mean": 0.54
+          },
+          "notes": "gate_pass_rate = share of answers passing the module's structural check (headings, word budget, every indicator copied from the input); deterministic_rate = byte-identical answers in a second pass over the passing items. There are no reference summaries: this measures form and indicator faithfulness, not content quality. Two of 99 answers differed in wording: seed + temperature 0 is not a guarantee."
+        }
+      ]
+    }
+  ]
+}

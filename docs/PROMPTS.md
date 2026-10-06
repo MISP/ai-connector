@@ -60,6 +60,40 @@ Copy both files into the instance's custom galaxy directory (`app/files/misp-gal
 instances pull. Editing a prompt = bump `meta.version` and the cluster `version`; the module
 logs the version it used, so drift between instances is visible.
 
+## Sharing prompts with scores: prompt cards (draft)
+
+A galaxy cluster says *which* prompt, model and parameters belong together; it does not say how
+well they did. A **prompt card** adds that, in a plain JSON file meant to travel between MISP
+communities: per card the prompt text, the MISP `use_case`, `model_id` (+ the exact build),
+`model_parameters`, and the benchmarks with their scores; one `metadata` block per file (schema
+version and URL, uuid, version, publication date, authors, licence, TLP tag). Every field is
+described in the schema itself, not repeated here.
+
+| file | content |
+|---|---|
+| `schemas/prompt-cards.schema.json` | the format, JSON Schema draft-07 (readable by PHP and older Python validators) |
+| `schemas/prompt-cards.example.json` | four shipped clusters for Qwen3.8-27B with the v4 scores ([BENCHMARKS.md](BENCHMARKS.md)) |
+
+- `use_case` uses MISP's names (`summarization_on_event`, `summarization_on_eventReport`,
+  `infoextraction`, `tag_suggest`), not the galaxy's `meta.use_case`; a card's `uuid` is the
+  cluster uuid when the prompt is also a cluster.
+- The example's scores were measured on the Ollama Q4_K_M build (`model_details`), not the FP8
+  build vLLM serves on nanu now; a score is only comparable for the same build.
+- The schema covers this exchange format only. MISP events are still validated by PyMISP
+  (ARCHITECTURE.md "Schema provenance").
+- How cards are shared (galaxy, MISP object, feed or git repo) is not decided yet.
+
+`.venv/bin/pytest -q tests/test_prompt_cards_unit.py` checks that the use-case enum is the
+module's contract and that every example card is byte-equal to its shipped cluster (prompt,
+version, parameters, sha256), so a changed prompt fails until its card follows. The full schema
+validation in that file needs `jsonschema`, which is not a project dependency: it skips without
+it, CI installs it hash-pinned from `.github/schema-requirements.txt`. Locally (`--no-sync`
+leaves `.venv` alone):
+
+```bash
+uv run --no-sync --with-requirements .github/schema-requirements.txt pytest -q tests/test_prompt_cards_unit.py
+```
+
 ## Prompt texts
 
 The clusters below are the shipped ones; the first cluster of a use-case is the default. Superseded

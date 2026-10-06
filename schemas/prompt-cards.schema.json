@@ -1,0 +1,189 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MISP/ai-connector/main/schemas/prompt-cards.schema.json",
+  "title": "MISP AI prompt cards",
+  "description": "A shareable set of LLM prompts for MISP's AI use-cases. Each card bundles one prompt with the model and the sampling parameters it was validated with and the benchmark scores it reached, so another MISP community can reproduce or compare the result. Draft: the sharing channel is not decided yet.",
+  "type": "object",
+  "required": ["metadata", "prompts"],
+  "additionalProperties": false,
+  "properties": {
+    "metadata": { "$ref": "#/definitions/metadata" },
+    "prompts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/prompt_card" }
+    }
+  },
+  "definitions": {
+    "metadata": {
+      "type": "object",
+      "required": ["schema_version", "schema_url", "uuid", "name", "version", "date_published", "authors"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1.0",
+          "description": "Version of this schema the file follows (semver)."
+        },
+        "schema_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Where the schema named by schema_version can be fetched."
+        },
+        "uuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "description": "Identity of this file; stays the same across its versions."
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Content version, bumped on every change (as for MISP galaxies)."
+        },
+        "date_published": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this version was published, RFC 3339 (e.g. 2026-10-06T12:00:00Z)."
+        },
+        "authors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "People and organisations, as in MISP galaxies."
+        },
+        "license": { "type": "string", "description": "SPDX identifier, e.g. CC0-1.0." },
+        "source": {
+          "type": "string",
+          "format": "uri",
+          "description": "Where the current version of this file is published."
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "MISP tags for the whole file, e.g. a TLP marking (tlp:clear)."
+        }
+      }
+    },
+    "prompt_card": {
+      "type": "object",
+      "required": ["uuid", "name", "use_case", "prompt", "model_id", "model_parameters", "benchmarks"],
+      "additionalProperties": false,
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "description": "Identity of the prompt. For a prompt shipped as a generic-ai-prompts galaxy cluster, the cluster uuid."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable id, by convention <use-case>/<model>-v<n> (the galaxy cluster value)."
+        },
+        "description": { "type": "string" },
+        "use_case": {
+          "enum": ["summarization_on_event", "summarization_on_eventReport", "infoextraction", "tag_suggest"],
+          "description": "The MISP AI use-case: the use_case MISP sends to the ai_connector module."
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Prompt version, bumped on every change of prompt or model_parameters."
+        },
+        "language": {
+          "type": "string",
+          "description": "Language of the prompt and of the expected answer, BCP 47 (e.g. en)."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The full prompt text, sent as the user message. Placeholders filled at call time: {{input}} = the EventReport text or the rendered event; {{misp_types}} = the MISP attribute types (infoextraction)."
+        },
+        "prompt_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of prompt (UTF-8, hex), to check that a copied prompt is unchanged."
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The model as named by its publisher: the Hugging Face repo id for open-weight models (Qwen/Qwen3.8-27B), the API model name for hosted ones (gpt-5.4-nano)."
+        },
+        "model_details": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The exact build the benchmarks ran on; scores are only comparable for the same build.",
+          "properties": {
+            "quantization": { "type": "string", "description": "e.g. Q4_K_M, FP8, none." },
+            "digest": {
+              "type": "string",
+              "description": "Weights digest as the server reports it (Ollama /api/tags) or a hash of the model files."
+            },
+            "inference_server": { "type": "string", "description": "Server and version, e.g. ollama 0.33.2." },
+            "served_as": {
+              "type": "string",
+              "description": "The model name the server was called with, if it differs from model_id."
+            }
+          }
+        },
+        "model_parameters": { "$ref": "#/definitions/model_parameters" },
+        "benchmarks": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/benchmark" },
+          "description": "Evaluations of this prompt with this model and these parameters. Empty = not benchmarked."
+        }
+      }
+    },
+    "model_parameters": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Sampling parameters the prompt was validated with (OpenAI chat-completions names). An absent parameter was not sent, i.e. the server default. Server-specific parameters beyond these are allowed.",
+      "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "top_p": { "type": "number", "minimum": 0, "maximum": 1 },
+        "top_k": { "type": "integer", "minimum": -1, "description": "-1 or 0 = disabled, depending on the server." },
+        "min_p": { "type": "number", "minimum": 0, "maximum": 1 },
+        "seed": { "type": "integer" },
+        "max_tokens": { "type": "integer", "minimum": 1, "description": "Answer budget in tokens." },
+        "presence_penalty": { "type": "number", "minimum": -2, "maximum": 2 },
+        "frequency_penalty": { "type": "number", "minimum": -2, "maximum": 2 },
+        "repetition_penalty": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "1 = no penalty (vLLM repetition_penalty, Ollama repeat_penalty)."
+        },
+        "stop": {
+          "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
+        },
+        "think": {
+          "type": "boolean",
+          "description": "Reasoning mode on or off, for models that have one (Qwen3 enable_thinking)."
+        }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "required": ["name", "scores"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Benchmark name; keep it stable across runs so scores can be compared."
+        },
+        "url": { "type": "string", "format": "uri", "description": "The benchmark's method and results." },
+        "dataset": { "type": "string", "description": "What was evaluated: source, size, how it was drawn." },
+        "sample_size": { "type": "integer", "minimum": 1 },
+        "date": { "type": "string", "format": "date", "description": "Day of the run (YYYY-MM-DD)." },
+        "scores": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "number" },
+          "description": "Metric name -> value; rates are 0..1. A metric name is only comparable within the same benchmark."
+        },
+        "notes": { "type": "string", "description": "Caveats needed to read the scores." }
+      }
+    }
+  }
+}

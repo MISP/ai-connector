@@ -37,6 +37,8 @@ jobs:
         with:
           python-version: "3.14"
       - run: uv sync --extra dev --extra e2e
+      # CI-only, hash-pinned: lets the prompt-card schema check run (it skips without jsonschema)
+      - run: uv pip install --require-hashes -r .github/schema-requirements.txt
       # Offline layers only: unit tests, the MISP contract gate and the local misp-modules
       # server e2e. Every live layer (LLM, MISP, misp-tag-suggest) skips itself when CI is set
       # (tests/conftest.py live_gate); they run from a developer machine (docs/TESTING.md).

@@ -39,6 +39,7 @@ genai/                    everything else, because misp-modules imports EVERY .p
   refang.py, dates.py       the two normalisations extraction is allowed to perform
   classic.py                regex baseline over iocextract — benchmarks and tests only, never imported by the module
 galaxies/ · clusters/     the generic-ai-prompts MISP galaxy (prompt text + model + sampling parameters)
+schemas/                  prompt cards: the shareable prompt + model + parameters + scores format (PROMPTS.md)
 fixtures/                 output/*.json (8 real events, 5 with reports), summary/dummy-event.json, gold/*.iocs.json
 tests/                    see §6; conftest.py holds the .env loader, the read-only MispApi and the live gates
 benchmarks/               see §7
@@ -292,6 +293,8 @@ ones. Data and per-item results are gitignored; the csv and the generated report
 `ruff format expansion genai tests benchmarks` fixes formatting. CI
 (`.github/workflows/checks.yml`) runs ruff (pinned), pylint (`--disable=fixme`), the offline
 pytest layers and semgrep (`p/python`, `p/security-audit`) on every push and pull request.
+The pytest job also installs `jsonschema` with `--require-hashes` from
+`.github/schema-requirements.txt` (CI only, not a project dependency) for the prompt-card check.
 Install the local hook once:
 
 ```bash
