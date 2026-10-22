@@ -3,6 +3,7 @@
 ## 2026-10-22 (live AI-actions gate: the extraction test waits for MISP to finish saving)
 
 - `tests/test_e2e_misp_ai_actions.py` `test_extract_indicators_through_misp`: the first extraction counts as done only once AI-extracted attributes exist **and two consecutive polls (3 s apart) return the same `(type, value)` set**; MISP's background job saves the module's result attribute by attribute, so the old "at least one attribute exists" condition could read the list mid-save. The "a re-run adds nothing" check compares the `(type, value)` sets instead of the counts, so a failure names what was added. Trigger: the live gate failed once on 2026-10-22 (6 attributes after the first run, 7 after the re-run) and passed when repeated. Verified live on 2026-10-22: the single test passed twice in a row (57 s each) and the two-file gate (`tests/test_e2e_misp_ai_actions.py tests/test_e2e_misp_write.py`) passed, 10 passed in 153 s; the re-run set equalled the first-run set in all four runs, so no model non-determinism was observed and the one-off failure stays attributed to the polling race.
+- `.gitignore`: `*.egg-info/` (`ai_connector.egg-info/` is written by `uv pip install -e` and showed up as untracked).
 
 ## 2026-10-06 (prompt cards: a shareable format for prompts with their scores)
 
