@@ -70,11 +70,11 @@ This module does the mechanical part and leaves the judgement to you:
 
 ## Try it in a minute
 
-Python 3.14, [uv](https://docs.astral.sh/uv/), and an OpenAI-compatible endpoint in `.env`
-(details: [docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md)).
+Install with five commands on a bare host (uv brings Python 3.14):
+[docs/OPERATOR_GUIDE.md §1.2](docs/OPERATOR_GUIDE.md#12-install). Put an OpenAI-compatible
+endpoint in `.env` ([§1.3](docs/OPERATOR_GUIDE.md#13-configure)), then start the server:
 
 ```bash
-uv pip install --python .venv/bin/python -e ".[dev,e2e]"
 .venv/bin/python -m misp_modules -c . -l 127.0.0.1 -p 6667
 ```
 

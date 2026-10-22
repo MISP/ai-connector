@@ -299,22 +299,12 @@ https://www.misp-project.org/misp-training/3.1-misp-modules.pdf
 
 ## Deploying your module
 
-#### Install misp-modules
-
-```
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv --python=3.12 .venv
-source .venv/bin/activate
-git clone https://github.com/MISP/misp-modules.git && cd misp-modules
-uv pip install .[all]
-misp-modules
-```
-
-#### Deploy your new misp module
-
-- Copy the module into misp_modules/modules/expansion
-- Make sure that the name is in the format /[a-z0-9_]*\.py/
-- Restart misp-modules
+Installing and running *this* module from scratch is
+[OPERATOR_GUIDE.md §1.2–1.5](OPERATOR_GUIDE.md#12-install): the uv steps of the upstream
+[misp-modules install guide](https://misp.github.io/misp-modules/install/) with this repository
+in place of misp-modules. misp-modules loads the module from the checkout (`-c <checkout>`, its
+custom-module root, finds `expansion/ai_connector.py`), so nothing is copied into
+`misp_modules/modules/expansion`; restart the server after a change.
 
 ## Testing your module:
 

@@ -18,7 +18,8 @@ Every command is copy-pasteable from the repository root.
 
 | | |
 |---|---|
-| Python `3.14` and [uv](https://docs.astral.sh/uv/) | the runtime |
+| [uv](https://docs.astral.sh/uv/) | the installer; it fetches Python `3.14` itself when the host has none |
+| `git`, `curl`, `jq` | for the commands in this part |
 | an OpenAI-compatible chat endpoint | [Ollama](https://ollama.com/) on a GPU host (`ollama pull qwen3.8`), vLLM, or a commercial API |
 | a MISP instance | optional for the module itself; needed to read real events and push results back |
 | a host that can reach both | the module is a small stateless HTTP responder; the model does the work |
@@ -31,14 +32,20 @@ The module has one third-party runtime dependency, `pymisp`.
 
 ### 1.2 Install
 
+The same steps as the upstream [misp-modules install guide](https://misp.github.io/misp-modules/install/)
+("Install via uv"), with this repository in place of misp-modules. Start on a bare host:
+
 ```bash
-git clone https://github.com/ctitools/ai-connector.git && cd ai-connector
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.local/bin/env                       # puts uv on PATH in this shell (or open a new one)
+git clone https://github.com/MISP/ai-connector.git && cd ai-connector
 uv venv --python 3.14 .venv
 uv pip install --python .venv/bin/python -e ".[dev,e2e]"
 ```
 
-`.[dev,e2e]` also pulls in `misp-modules`, pytest and the linters, so the same checkout can run
-the module in a real misp-modules server and run the test suite.
+`.[dev,e2e]` also pulls in `misp-modules`, pytest and the linters, so the same checkout runs
+the module in a real misp-modules server and runs the test suite. Already have uv? Start at
+`git clone`. Already have the checkout with its `.venv`? The last line alone updates it.
 
 ### 1.3 Configure
 
