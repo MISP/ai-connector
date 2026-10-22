@@ -13,8 +13,9 @@ pass, `pymisp` as the only third-party runtime dependency.
 
 ## 1. Set up
 
-Python 3.14 and [uv](https://docs.astral.sh/uv/); the `.venv` at the repository root already
-exists in a working checkout — never recreate it.
+A fresh host or a fresh clone: [OPERATOR_GUIDE.md §1.2](OPERATOR_GUIDE.md#12-install) (uv,
+Python 3.14, clone, `.venv`, install). In a working checkout the `.venv` at the repository
+root is that install — update it, never recreate it:
 
 ```bash
 uv pip install --python .venv/bin/python -e ".[dev,e2e]"   # deps + pytest/ruff/pylint + misp-modules

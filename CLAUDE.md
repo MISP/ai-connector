@@ -14,7 +14,8 @@ project status) — in front of the reference documents; the use-case contracts 
 
 ## Commands
 
-The `.venv` (Python 3.14) already exists at the repo root; never recreate it. Use `uv` for installs.
+The `.venv` (Python 3.14) already exists at the repo root; never recreate it. Use `uv` for installs
+(a new host starts from `docs/OPERATOR_GUIDE.md` 1.2).
 
 ```bash
 uv pip install --python .venv/bin/python -e ".[dev,e2e]"   # deps + pytest/ruff/pylint + misp-modules
