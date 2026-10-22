@@ -30,6 +30,8 @@ on the CIRCL developer host, `qwen3.8:latest` on Ollama 0.33.2 on a 2× RTX 4090
 
 The module has one third-party runtime dependency, `pymisp`.
 
+Also, for suggesting MISP tags by AI, it will use the embedding model in [misp-tag-suggest](https://github.com/ctitools/misp-tag-suggest) which you will also need to install (follow the installation instructions there).
+
 ### 1.2 Install
 
 The same steps as the upstream [misp-modules install guide](https://misp.github.io/misp-modules/install/)
@@ -46,6 +48,8 @@ uv pip install --python .venv/bin/python -e ".[dev,e2e]"
 `.[dev,e2e]` also pulls in `misp-modules`, pytest and the linters, so the same checkout runs
 the module in a real misp-modules server and runs the test suite. Already have uv? Start at
 `git clone`. Already have the checkout with its `.venv`? The last line alone updates it.
+
+In a separate directory, install the  [misp-tag-suggest](https://github.com/ctitools/misp-tag-suggest) embedding model. **Note** the idea is that you train the MISP tag-suggest embedding model on *your* taxonomy that you would like to see for your events. Training it does not require lots of resources. See the instructions there.
 
 ### 1.3 Configure
 
