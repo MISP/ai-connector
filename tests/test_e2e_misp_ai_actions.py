@@ -86,6 +86,10 @@ def _extracted(event: dict) -> list[dict]:
     return [a for a in attributes if a.get("comment", "").startswith(extract.COMMENT)]
 
 
+def _pairs(attributes: list[dict]) -> set[tuple[str, str]]:
+    return {(a["type"], a["value"]) for a in attributes}
+
+
 def test_ping_through_misp(misp_ai) -> None:
     """The Test LLM button: ServersController::aiDryRun with use_case ping, no event."""
     status, answer = _http(misp_ai, "/servers/aiDryRun", {"use_case": "ping"})
@@ -173,11 +177,14 @@ def test_extract_indicators_through_misp(misp_ai, misp_write, created_event) -> 
     module-result saver, each element AI-tagged and citing its source report."""
     before = _event(misp_write, created_event)
     (report,) = [r for r in before["EventReport"] if not r["deleted"]]
-    _run(
-        misp_ai,
-        f"/events/aiExtractIndicators/{before['id']}",
-        lambda: bool(_extracted(_event(misp_write, created_event))),
-    )
+    polls: list[set[tuple[str, str]]] = []
+
+    def settled() -> bool:
+        """MISP saves the result attribute by attribute: done once two polls agree."""
+        polls.append(_pairs(_extracted(_event(misp_write, created_event))))
+        return len(polls) > 1 and bool(polls[-1]) and polls[-1] == polls[-2]
+
+    _run(misp_ai, f"/events/aiExtractIndicators/{before['id']}", settled)
     after = _event(misp_write, created_event)
     added = _extracted(after)
     for attribute in added:
@@ -191,4 +198,4 @@ def test_extract_indicators_through_misp(misp_ai, misp_write, created_event) -> 
     assert status == 200 and answer.get("saved"), (status, answer)
     if "job_id" in answer:
         time.sleep(30)
-    assert len(_extracted(_event(misp_write, created_event))) == len(added)
+    assert _pairs(_extracted(_event(misp_write, created_event))) == _pairs(added)
