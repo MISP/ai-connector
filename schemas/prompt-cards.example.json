@@ -38,7 +38,7 @@
         "temperature": 0,
         "seed": 42,
         "top_p": 1,
-        "max_tokens": 10000,
+        "max_tokens": 16000,
         "think": false
       },
       "benchmarks": [
@@ -90,7 +90,7 @@
         "temperature": 0,
         "seed": 42,
         "top_p": 1,
-        "max_tokens": 1000,
+        "max_tokens": 16000,
         "think": false
       },
       "benchmarks": [
@@ -129,7 +129,7 @@
         "temperature": 0,
         "seed": 42,
         "top_p": 1,
-        "max_tokens": 600,
+        "max_tokens": 16000,
         "think": false
       },
       "benchmarks": [
@@ -166,7 +166,7 @@
         "temperature": 0,
         "seed": 42,
         "top_p": 1,
-        "max_tokens": 1000,
+        "max_tokens": 16000,
         "think": false
       },
       "benchmarks": [
