@@ -94,11 +94,14 @@ Expected: the settings with the API key masked, and `True`.
 ### 1.4 Run
 
 ```bash
-.venv/bin/python -m misp_modules -c . -l 127.0.0.1 -p 6666
+.venv/bin/python -m misp_modules -c . -l 127.0.0.1 -p 6667
 ```
 
 `-c .` points misp-modules at this repository as its custom-module root; `-l` and `-p` are the
-listen address and port. Add `-d` for debug logging ([4.2](#42-logs-what-exists-and-where)).
+listen address and port. Always pass `-p 6667`: misp-modules itself defaults to 6666, the port
+of the stock enrichment server every MISP installation already runs, so the AI server gets a
+port of its own and MISP is pointed at it ([2.2](#22-how-callers-reach-the-module-today)).
+Add `-d` for debug logging ([4.2](#42-logs-what-exists-and-where)).
 
 Under a supervisor — a minimal systemd unit for a checkout in `/opt/ai-connector`
 (not shipped in this repository, adapt to your conventions):
@@ -112,7 +115,7 @@ After=network-online.target
 User=misp-modules
 WorkingDirectory=/opt/ai-connector
 ExecStart=/opt/ai-connector/.venv/bin/python -m misp_modules \
-          -c /opt/ai-connector -l 127.0.0.1 -p 6666
+          -c /opt/ai-connector -l 127.0.0.1 -p 6667
 Restart=on-failure
 
 [Install]
@@ -129,14 +132,14 @@ The server exposes `/modules`, `/query`, `/healthcheck`, `/version`, `/openapi.j
 Swagger UI on `/openapi`.
 
 ```bash
-curl -s http://127.0.0.1:6666/healthcheck                                   # {"status":true}
-curl -s http://127.0.0.1:6666/modules | jq '.[] | select(.name=="ai_connector") | {name, version: .meta.version, type: .meta["module-type"]}'
+curl -s http://127.0.0.1:6667/healthcheck                                   # {"status":true}
+curl -s http://127.0.0.1:6667/modules | jq '.[] | select(.name=="ai_connector") | {name, version: .meta.version, type: .meta["module-type"]}'
 ```
 
 **a) Ping** — the endpoint and model from `.env` (or from `params`), no generation:
 
 ```bash
-curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' \
+curl -s http://127.0.0.1:6667/query -H 'Content-Type: application/json' \
   --data '{"module": "ai_connector", "use_case": "ping", "params": {}}' | jq .results
 ```
 
@@ -144,7 +147,7 @@ curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' \
 
 ```bash
 jq -c '{module: "ai_connector", use_case: "summarization_on_event", data: ., params: {}}' fixtures/summary/dummy-event.json \
-  | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
+  | curl -s http://127.0.0.1:6667/query -H 'Content-Type: application/json' --data @- \
   | jq '{report: .results.EventReport, tags: [.results.Tag[].name], meta: .metadata}'
 ```
 
@@ -153,7 +156,7 @@ report with the `# AI summary` block on top of the original text:
 
 ```bash
 jq -c '{module: "ai_connector", use_case: "summarization_on_eventReport", data: {EventReport: .Event.EventReport[0], Event: {uuid: .Event.uuid, info: .Event.info}}, params: {}}' fixtures/summary/dummy-event.json \
-  | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
+  | curl -s http://127.0.0.1:6667/query -H 'Content-Type: application/json' --data @- \
   | jq -r '.results.EventReport.content' | head -20
 ```
 
@@ -164,7 +167,7 @@ orkl.eu reports in `tests/fixtures/orkl/`:
 ```bash
 jq -n --rawfile r tests/fixtures/orkl/40301ca4-fed9-4b59-95ba-b668eb8eb7aa.txt \
   '{module: "ai_connector", use_case: "infoextraction", data: {Event: {info: "extraction walkthrough", EventReport: [{name: "report", content: $r}]}}, params: {}}' \
-  | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
+  | curl -s http://127.0.0.1:6667/query -H 'Content-Type: application/json' --data @- \
   | jq '{attributes: [.results.Attribute[] | {type, value, comment}], added: .metadata.added, rejected: [.metadata.rejected[] | .reason]}'
 ```
 
@@ -172,7 +175,7 @@ jq -n --rawfile r tests/fixtures/orkl/40301ca4-fed9-4b59-95ba-b668eb8eb7aa.txt \
 
 ```bash
 jq -c '{module: "ai_connector", use_case: "tag_suggest", data: ., params: {suggest_limit: 5}}' fixtures/output/10a94632-a0a1-4062-a3a5-95fe321ae045.json \
-  | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
+  | curl -s http://127.0.0.1:6667/query -H 'Content-Type: application/json' --data @- \
   | jq '{tags: [.results.Tag[].name], abstained: .metadata.abstained}'
 ```
 
@@ -219,7 +222,8 @@ The remaining `Plugin.AI_*` settings (`services_enable`, `services_url`, `servic
 ### 2.2 How callers reach the module today
 
 **From MISP** (branch `feature/ai_tools`): enable the AI family on the *AI* settings tab —
-`Plugin.AI_services_enable = true`, `AI_services_url` / `AI_services_port` = this server — and
+`Plugin.AI_services_enable = true`, `AI_services_url` = this host and `AI_services_port = 6667`
+(its default, 6666, is the stock misp-modules server, not this one) — and
 the status card shows `ai_connector` listed with its version; its *Test LLM* button is the
 `ping` use-case. Users whose role has `perm_ai_tools` then get *AI actions* in the event side
 menu (summarise event, recommend tags, extract indicators), a robot icon on every event report
@@ -235,7 +239,7 @@ summaries and accepted tag suggestions, per attribute for extractions. The reque
  "timeout": 300}
 ```
 
-**From a script:** the same envelope, `POST http://<host>:6666/query`. The exact request and
+**From a script:** the same envelope, `POST http://<host>:6667/query`. The exact request and
 answer shapes are the table in the developer guide §3. A complete scripted round trip — create
 an event, run every use-case, write the results into MISP with PyMISP the way MISP's own models
 do, verify the tags on the instance — is `tests/test_e2e_misp_write.py`; the same through MISP's
@@ -355,8 +359,8 @@ both "was there an error" and "what did it do".
 ### 4.3 Health checks and monitoring
 
 ```bash
-curl -sf http://127.0.0.1:6666/healthcheck                                    # server alive
-curl -s http://127.0.0.1:6666/modules | jq -e '.[] | select(.name=="ai_connector")' >/dev/null   # module loaded
+curl -sf http://127.0.0.1:6667/healthcheck                                    # server alive
+curl -s http://127.0.0.1:6667/modules | jq -e '.[] | select(.name=="ai_connector")' >/dev/null   # module loaded
 .venv/bin/python -c "from genai import llm; s=llm.LLMSettings.from_env(); exit(0 if llm.is_reachable(s) else 1)"   # model reachable
 curl -sf http://127.0.0.1:8000/health | jq -e '.artifacts_ready'              # tag suggestion ready
 ```

@@ -19,7 +19,7 @@ exists in a working checkout — never recreate it.
 ```bash
 uv pip install --python .venv/bin/python -e ".[dev,e2e]"   # deps + pytest/ruff/pylint + misp-modules
 .venv/bin/pytest -q                                        # offline layers must be green before you start
-.venv/bin/python -m misp_modules -c . -l 127.0.0.1 -p 6666  # the module in a real misp-modules server
+.venv/bin/python -m misp_modules -c . -l 127.0.0.1 -p 6667  # the module in a real misp-modules server
 ```
 
 `.env` at the repository root configures the LLM, MISP and the tag-suggestion service — see

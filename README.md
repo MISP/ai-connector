@@ -75,14 +75,14 @@ Python 3.14, [uv](https://docs.astral.sh/uv/), and an OpenAI-compatible endpoint
 
 ```bash
 uv pip install --python .venv/bin/python -e ".[dev,e2e]"
-.venv/bin/python -m misp_modules -c . -l 127.0.0.1 -p 6666
+.venv/bin/python -m misp_modules -c . -l 127.0.0.1 -p 6667
 ```
 
 In a second terminal — a summary of the shipped test event, with the AI tags it carries:
 
 ```bash
 jq -c '{module: "ai_connector", use_case: "summarization_on_event", data: ., params: {}}' fixtures/summary/dummy-event.json \
-  | curl -s http://127.0.0.1:6666/query -H 'Content-Type: application/json' --data @- \
+  | curl -s http://127.0.0.1:6667/query -H 'Content-Type: application/json' --data @- \
   | jq '{summary: .results.EventReport.content, tags: [.results.Tag[].name], meta: .metadata}'
 ```
 
