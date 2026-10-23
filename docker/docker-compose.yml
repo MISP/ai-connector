@@ -1,0 +1,23 @@
+# The ai_connector on misp-docker's network: MISP and the other containers there
+# reach it as http://ai-connector:6667. No port is published on the host.
+name: ai-connector
+
+services:
+  ai-connector:
+    image: ai-connector:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    # Optional: the LLM and tag-suggestion settings (OPERATOR_GUIDE 1.3). MISP sends
+    # the endpoint, key and model with every request anyway.
+    env_file:
+      - path: ../.env
+        required: false
+    expose:
+      - "6667"
+
+networks:
+  default:
+    name: ${MISP_NETWORK:-misp-docker_default}
+    external: true

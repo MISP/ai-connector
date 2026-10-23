@@ -1,0 +1,8 @@
+# Allow-list: only what docker/Dockerfile copies. .env (the keys) never enters the image.
+*
+!pyproject.toml
+!uv.lock
+!expansion/
+!genai/
+!clusters/
+**/__pycache__

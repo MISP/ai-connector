@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-23 (Docker)
+
+- Added `docker/`: Dockerfile, dockerignore, compose file and README. The container joins misp-docker's network on port 6667, publishes no host port and never contains `.env`.
+- Added `tests/test_docker_unit.py`.
+
 ## 2026-10-22 (the server port is 6667 by default)
 
 - **`max_tokens` raised to 16000 in every cluster** of `clusters/generic-ai-prompts.json` and the mirrored `schemas/prompt-cards.example.json` (was 10000 for extraction, 1000/600 for the summaries) and the built-in fallback in `genai/llm.py` (used only when a cluster omits the key) from 600 to 8000. The prompt text and `prompt_sha256` are unchanged; the vLLM instance on nanu reports a 128k model length, so prompt plus answer still fit. Tests and `docs/PROMPTS.md` / `docs/BENCHMARKS.md` updated.
