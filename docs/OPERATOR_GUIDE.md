@@ -137,6 +137,16 @@ Bind to the address MISP reaches you on (`Plugin.AI_services_url` / `_port` on t
 and to nothing wider: `/query` executes model calls, with the endpoint and key the caller sends,
 for anyone who can reach it ([4.6](#46-security-posture)).
 
+**In Docker**, next to [misp-docker](https://github.com/MISP/misp-docker): the container joins
+misp-docker's network and publishes no port on the host, so MISP and the other containers there
+reach it as `http://ai-connector:6667` (`Plugin.AI_services_url = http://ai-connector`). The
+repository's `.env` is passed in as environment and never copied into the image. Details:
+[docker/README.md](../docker/README.md).
+
+```bash
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
 ### 1.5 Verify
 
 The server exposes `/modules`, `/query`, `/healthcheck`, `/version`, `/openapi.json` and a
