@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-26 (docs/INSTALL.md: installing the module for a MISP instance)
+
+- **New `docs/INSTALL.md`**: the module next to a MISP instance, written for MISP administrators. Two install paths: a Docker service for a misp-docker stack, and a systemd service on the MISP host. Then MISP's settings, the LLM endpoint (common setups, *Test LLM*, `perm_ai_tools`, timeouts, tag suggestion) and troubleshooting keyed on the verdicts of MISP's module status card.
+  - Docker path: no checkout needed. Compose builds `FROM` the stack's own misp-modules image with this repository's Git URL as build context. The service lives in its own `docker-compose.ai-connector.yml`, loaded through `COMPOSE_FILE` in the stack's `.env`, so misp-docker's `docker-compose.yml` stays untouched.
+  - The image installs the module from a `/tmp` copy, because pip needs a writable source tree and the misp-modules image does not run as root.
+  - Tested on 2026-10-26 against `misp-modules:3.0_wip` in a throwaway compose project: the image built, the container went healthy, and `/modules` listed `ai_connector` 0.6. The `COMPOSE_FILE` merge with misp-docker's `docker-compose.yml` was checked with `docker compose config`.
+- **MISP displays this file** in its *AI* settings (the *Installation guide* of the module status card). It downloads it from `main`, shows the part above the first `## ` as an overview and turns each `## ` section into a tab. The file is pure markdown that reads the same on GitHub: a mermaid diagram, GitHub alerts, and `#section` links, which switch tabs in MISP.
+- `tests/test_docs_unit.py`:
+  - `INSTALL.md` joins the guides that must use port 6667.
+  - It is exempt from "the uv installer is written once": its systemd install is a recipe of its own (system user, `/opt`, no dev extras), not a copy of OPERATOR_GUIDE 1.2.
+  - A new test keeps the four sections MISP shows (Docker, Standard install, LLM endpoint, Troubleshooting) and no `## ` line inside a code block.
+- Pointers added in OPERATOR_GUIDE 1.2 (serving MISP → INSTALL.md; this section is the development checkout) and 1.4 (systemd unit), the README documentation section, the DEVELOPER_GUIDE reference table and CLAUDE.md.
+
 ## 2026-10-22 (the server port is 6667 by default)
 
 - **`max_tokens` raised to 16000 in every cluster** of `clusters/generic-ai-prompts.json` and the mirrored `schemas/prompt-cards.example.json` (was 10000 for extraction, 1000/600 for the summaries) and the built-in fallback in `genai/llm.py` (used only when a cluster omits the key) from 600 to 8000. The prompt text and `prompt_sha256` are unchanged; the vLLM instance on nanu reports a 128k model length, so prompt plus answer still fit. Tests and `docs/PROMPTS.md` / `docs/BENCHMARKS.md` updated.

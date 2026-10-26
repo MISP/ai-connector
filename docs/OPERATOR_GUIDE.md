@@ -34,6 +34,11 @@ Also, for suggesting MISP tags by AI, it will use the embedding model in [misp-t
 
 ### 1.2 Install
 
+> **Serving a MISP instance?** Follow [INSTALL.md](INSTALL.md) instead: the module in a Docker
+> container next to misp-docker, or as a systemd service on the MISP host, and MISP pointed at
+> it. MISP opens that page itself, from its *AI* settings. This section installs a checkout to
+> develop the module and run its tests.
+
 The same steps as the upstream [misp-modules install guide](https://misp.github.io/misp-modules/install/)
 ("Install via uv"), with this repository in place of misp-modules. Start on a bare host:
 
@@ -115,7 +120,8 @@ port of its own and MISP is pointed at it ([2.2](#22-how-callers-reach-the-modul
 Add `-d` for debug logging ([4.2](#42-logs-what-exists-and-where)).
 
 Under a supervisor — a minimal systemd unit for a checkout in `/opt/ai-connector`
-(not shipped in this repository, adapt to your conventions):
+(not shipped in this repository, adapt to your conventions; [INSTALL.md](INSTALL.md#standard-install)
+sets up a complete one, with its own system user):
 
 ```ini
 [Unit]

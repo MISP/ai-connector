@@ -10,7 +10,9 @@ more", tests first, CHANGELOG entry after every change, docs updated in the same
 organised as three guides — `docs/USER_GUIDE.md` (what it does), `docs/OPERATOR_GUIDE.md`
 (install, run, operate) and `docs/DEVELOPER_GUIDE.md` (code, tests, benchmarks, contributing,
 project status) — in front of the reference documents; the use-case contracts are in
-`docs/USE-CASES.md`, the test plan in `docs/TESTING.md`.
+`docs/USE-CASES.md`, the test plan in `docs/TESTING.md`. `docs/INSTALL.md` (installing for a
+MISP instance) is also displayed by MISP itself, which downloads it from `main` and turns each
+`## ` section into a tab: keep its section titles (`tests/test_docs_unit.py` checks them).
 
 ## Commands
 

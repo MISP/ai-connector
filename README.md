@@ -40,6 +40,10 @@ Three guides, one per reader. Start with the one that matches what you want to d
 | **[docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md)** | install it, run it and keep it alive | install, `.env`, running the server, verification calls, settings, the tag-suggestion service, metrics, logs, failure modes, security, upgrades |
 | **[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)** | change the code | code map, invariants, how to add a use-case or a prompt, the test layers and gates, how to run and write benchmarks, how to contribute, and where the project stands |
 
+**Only installing it for a MISP instance?** [docs/INSTALL.md](docs/INSTALL.md): Docker or a
+systemd service, then MISP's settings. It is also the *Installation guide* MISP opens from its
+*AI* settings.
+
 Reference documents behind them — the use-case contracts
 ([docs/USE-CASES.md](docs/USE-CASES.md)), the architecture
 ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)), the prompts

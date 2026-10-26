@@ -394,6 +394,7 @@ knowledge graphs, periodic reports, MCP server) are kept as one-liners at the en
 | [BENCHMARKS.md](BENCHMARKS.md) | method, metric definitions, current results and history |
 | [IMPROVEMENTS.md](IMPROVEMENTS.md) | repository analysis and the numbered backlog |
 | [INTEGRATION_PLAN.md](INTEGRATION_PLAN.md) | how MISP invokes modules, and the recommended integration |
+| [INSTALL.md](INSTALL.md) | installing the module for a MISP instance (Docker, systemd); MISP displays it, one tab per `## ` section |
 | [DEPLOY_TAG_SUGGEST.md](DEPLOY_TAG_SUGGEST.md) | the tag-suggestion service on a GPU host, step by step |
 | [../AGENTS.md](../AGENTS.md), [../CLAUDE.md](../CLAUDE.md) | contributor and agent guidance |
 | [../CHANGELOG.md](../CHANGELOG.md) | what changed, newest first |
